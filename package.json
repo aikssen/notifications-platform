@@ -2,7 +2,7 @@
   "name": "notifications-platform",
   "version": "1.0.0",
   "private": true,
-  "description": "Cobre notifications challenge — event-driven webhook delivery platform",
+  "description": "Cobre notifications challenge \u2014 event-driven webhook delivery platform",
   "packageManager": "pnpm@10.28.1",
   "engines": {
     "node": ">=22"
@@ -13,12 +13,6 @@
     "typecheck": "pnpm -r typecheck",
     "lint": "eslint services",
     "lint:fix": "eslint services --fix"
-  },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "esbuild",
-      "unrs-resolver"
-    ]
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
