@@ -69,28 +69,47 @@ Requires Docker, Node 22+, pnpm and Go 1.24+.
 
 ```bash
 cp .env.example .env
-make up          # postgres + kafka (KRaft) + prometheus + grafana + services
-make seed        # load fixtures/notification_events.json as the initial state
-make deliver-all # push every fixture event through the real pipeline
+make up             # postgres + kafka (KRaft) + prometheus + grafana + 5 services
+make subscribe-all  # register a subscription per client and event type
+make deliver-all    # push every fixture event through the real pipeline
+./scripts/e2e.sh    # 36 assertions against the running stack
 ```
 
 | | |
 |---|---|
-| Ops dashboard | http://localhost:3003 |
-| Grafana | http://localhost:3000 |
+| Operations dashboard | http://localhost:3003 |
+| Grafana | http://localhost:3000/d/notifications-delivery |
 | Prometheus | http://localhost:9090 |
 | Self-service API | http://localhost:3002 |
 | Subscription API | http://localhost:3001 |
 
 `make help` lists every target.
 
+## Verification
+
+```bash
+make test              # unit tests: 85 in TypeScript, 60+ in Go
+make test-integration  # real PostgreSQL via testcontainers
+make lint              # includes the dependency rule, in both languages
+./scripts/e2e.sh       # the whole pipeline against a running stack
+```
+
+The end-to-end script walks the same path the demo does and asserts on the
+result — SSRF refusals, tenant isolation, the ten fixture events delivered and
+signed, both list filters, a failure retried to exhaustion, and a replay
+arriving back through the same pipeline.
+
 ## Documentation
 
-- [ARCHITECTURE.md](ARCHITECTURE.md) — the dependency rule and how it is enforced
-- [docs/adr/](docs/adr) — why Go for the workers, why a DB poller instead of delay topics, why SSE
-- [docs/security-owasp.md](docs/security-owasp.md) — each OWASP item mapped to the file that mitigates it
-- [docs/DEMO_RUNBOOK.md](docs/DEMO_RUNBOOK.md) — reproducible demo script
-- [docs/diagrams/](docs/diagrams) — architecture, sequence, activity and ER diagrams
+| | |
+|---|---|
+| [ARCHITECTURE.md](ARCHITECTURE.md) | three layers, one rule, and the lint that enforces it |
+| [docs/diagrams/](docs/diagrams) | architecture, lifecycle, sequences, data model — as Mermaid |
+| [docs/adr/](docs/adr) | seven decisions with their trade-offs and rejected alternatives |
+| [docs/security-owasp.md](docs/security-owasp.md) | each control mapped to a file and line, plus the honest gaps |
+| [docs/api/openapi.yaml](docs/api/openapi.yaml) | both client APIs |
+| [docs/DEMO_RUNBOOK.md](docs/DEMO_RUNBOOK.md) | a deterministic twelve-minute demo |
+| [docs/PRESENTATION_SCRIPT.md](docs/PRESENTATION_SCRIPT.md) | slide-by-slide script and a question bank |
 
 ## About the fixture
 
