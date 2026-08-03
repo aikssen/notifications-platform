@@ -6,7 +6,7 @@
  */
 import { resolve } from 'node:path';
 
-import { Kafka, type Producer } from 'kafkajs';
+import { Kafka, logLevel, type Producer } from 'kafkajs';
 import pg from 'pg';
 import { pino } from 'pino';
 
@@ -65,7 +65,12 @@ async function main(): Promise<void> {
   };
 
   if (config.kafkaBrokers.length > 0) {
-    const kafka = new Kafka({ clientId: 'self-service-api', brokers: config.kafkaBrokers });
+    const kafka = new Kafka({
+      clientId: 'self-service-api',
+      brokers: config.kafkaBrokers,
+      // WARN keeps connection failures and drops the connect/rebalance narration.
+      logLevel: logLevel.WARN,
+    });
     const producer: Producer = kafka.producer();
     await producer.connect();
     logger.info('kafka producer connected');

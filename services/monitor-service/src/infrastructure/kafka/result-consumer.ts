@@ -1,4 +1,4 @@
-import { Kafka, type Consumer } from 'kafkajs';
+import { Kafka, logLevel, type Consumer } from 'kafkajs';
 import type { Logger } from 'pino';
 
 import type { DeliveryResult, DeliveryStatus, DispatchSource } from '../../domain/delivery-feed.js';
@@ -25,7 +25,12 @@ export class KafkaResultStream implements ResultStream {
     groupId: string,
     private readonly log: Logger,
   ) {
-    const kafka = new Kafka({ clientId: 'monitor-service', brokers });
+    const kafka = new Kafka({
+      clientId: 'monitor-service',
+      brokers,
+      // WARN keeps connection failures and drops the connect/rebalance narration.
+      logLevel: logLevel.WARN,
+    });
     this.consumer = kafka.consumer({ groupId });
   }
 

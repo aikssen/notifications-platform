@@ -15,7 +15,7 @@ TS_SERVICES := self-service-api subscription-service monitor-service demo-tools
 ## up: start infrastructure and services
 .PHONY: up
 up: .env
-	$(COMPOSE) up -d --build
+	$(COMPOSE) up --build
 	@echo
 	@echo "postgres    localhost:5432"
 	@echo "kafka       localhost:9092"
@@ -41,6 +41,22 @@ ps:
 .PHONY: logs
 logs:
 	$(COMPOSE) logs -f $(S)
+
+## story: tail only the delivery narration — what to project during the demo
+.PHONY: story
+story:
+	$(COMPOSE) logs -f --tail=0 dispatch-service retry-service demo-tools
+
+## quiet: restart the stack with only warnings and errors
+.PHONY: quiet
+quiet:
+	LOG_LEVEL=warn $(COMPOSE) up -d
+	@echo "log level is now warn — run 'make loud' to get the delivery narration back"
+
+## loud: restore normal logging
+.PHONY: loud
+loud:
+	LOG_LEVEL=info $(COMPOSE) up -d
 
 ## psql: open a psql shell against the platform database
 .PHONY: psql

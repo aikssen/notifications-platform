@@ -44,8 +44,25 @@ Open four tabs:
 |---|---|
 | Operations dashboard | http://localhost:3003 |
 | Grafana | http://localhost:3000/d/notifications-delivery |
-| A terminal | for `make` and `curl` |
+| A terminal running `make story` | the delivery narration, and nothing else |
 | An editor | on `services/dispatch-service/internal/application/port/ports.go` |
+
+### If you project the logs
+
+Bring the stack up detached and follow only the services that tell the delivery
+story:
+
+```bash
+make up                # or `make up` in its own window
+make story             # dispatch + retry + the client endpoint
+```
+
+`make story` drops the API request lines, Prometheus scrapes, healthchecks and
+Kafka connection chatter. One delivery is about four lines.
+
+`make quiet` restarts everything at `LOG_LEVEL=warn` if you want near-silence —
+but note that also hides the delivery narration, which is usually the point.
+`make loud` puts it back.
 
 Reset to a clean state:
 

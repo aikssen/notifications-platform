@@ -39,6 +39,19 @@ export function buildApp(deps: AppDeps): Express {
   app.use(
     pinoHttp({
       logger: deps.logger,
+      // Operational endpoints are polled constantly — Prometheus every few
+      // seconds, the container healthcheck as often. Logging them buries the
+      // delivery traffic that actually says what the platform is doing.
+      autoLogging: {
+        ignore: (req) => req.url === '/healthz' || req.url === '/readyz' || req.url === '/metrics',
+      },
+      // Log what identifies a request, not its entire header set. The default
+      // serializers dump every helmet response header on every line, which is
+      // roughly 1.5 KB of noise per request.
+      serializers: {
+        req: (req) => ({ method: req.method, url: req.url }),
+        res: (res) => ({ statusCode: res.statusCode }),
+      },
       // A correlation id that follows the request all the way to the webhook
       // call, so one client complaint can be traced across services.
       genReqId: (req, res) => {

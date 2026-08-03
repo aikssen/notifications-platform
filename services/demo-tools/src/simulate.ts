@@ -8,7 +8,7 @@
  */
 import { randomUUID } from 'node:crypto';
 
-import { Kafka, type Producer } from 'kafkajs';
+import { Kafka, logLevel, type Producer } from 'kafkajs';
 import pg from 'pg';
 
 import { loadFixture, notificationEventIdFor, toEventState, type FixtureEvent } from './fixture.js';
@@ -21,7 +21,7 @@ let producer: Producer | null = null;
 
 async function getProducer(brokers: string[]): Promise<Producer> {
   if (producer) return producer;
-  const kafka = new Kafka({ clientId: 'demo-tools', brokers });
+  const kafka = new Kafka({ clientId: 'demo-tools', brokers, logLevel: logLevel.WARN });
   producer = kafka.producer();
   await producer.connect();
   return producer;
