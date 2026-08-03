@@ -128,6 +128,11 @@ KAFKA_BROKERS=localhost:9092 pnpm exec tsx src/publish.ts \
 cd ../..
 ```
 
+The retry settings in `.env` are tuned for the demo: the budget is spent in
+roughly 45 seconds. Production values are in the comment beside them — eight
+attempts spread over several hours, so a client's endpoint has time to actually
+come back before the platform gives up on it.
+
 On the dashboard, in order:
 
 1. `SYSTEM` · attempt 1 · HTTP 500 · `RETRYING`
