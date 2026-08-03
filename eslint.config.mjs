@@ -98,7 +98,9 @@ export default tseslint.config(
         'error',
         { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
       ],
-      eqeqeq: ['error', 'always'],
+      // `x == null` is the idiomatic null-or-undefined check and reads better
+      // than the four-term alternative. Everything else must be strict.
+      eqeqeq: ['error', 'always', { null: 'ignore' }],
       'no-console': 'error',
     },
   },
