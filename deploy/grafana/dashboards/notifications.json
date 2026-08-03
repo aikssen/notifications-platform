@@ -1,10 +1,15 @@
 {
   "uid": "notifications-delivery",
-  "title": "Notifications · Delivery",
-  "tags": ["notifications"],
+  "title": "Notifications \u00b7 Delivery",
+  "tags": [
+    "notifications"
+  ],
   "timezone": "browser",
   "refresh": "5s",
-  "time": { "from": "now-30m", "to": "now" },
+  "time": {
+    "from": "now-30m",
+    "to": "now"
+  },
   "editable": false,
   "schemaVersion": 39,
   "panels": [
@@ -12,7 +17,12 @@
       "type": "stat",
       "title": "Delivery success rate",
       "description": "The headline number. A sustained drop is the behaviour deviation the monitoring team is meant to catch.",
-      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 0 },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 0,
+        "y": 0
+      },
       "fieldConfig": {
         "defaults": {
           "unit": "percentunit",
@@ -21,14 +31,31 @@
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              { "color": "red", "value": null },
-              { "color": "orange", "value": 0.95 },
-              { "color": "green", "value": 0.99 }
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.95
+              },
+              {
+                "color": "green",
+                "value": 0.99
+              }
             ]
           }
         }
       },
-      "options": { "colorMode": "background", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
       "targets": [
         {
           "refId": "A",
@@ -40,83 +67,327 @@
     {
       "type": "stat",
       "title": "Deliveries per minute",
-      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 0 },
-      "fieldConfig": { "defaults": { "unit": "short", "decimals": 1 } },
-      "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 6,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 1
+        }
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
       "targets": [
-        { "refId": "A", "expr": "sum(rate(notifications_delivery_attempts_total[1m])) * 60", "legendFormat": "per minute" }
+        {
+          "refId": "A",
+          "expr": "sum(rate(notifications_delivery_attempts_total[1m])) * 60",
+          "legendFormat": "per minute"
+        }
       ]
     },
     {
       "type": "stat",
       "title": "Oldest event awaiting retry",
       "description": "The single most useful number on call: a rising value means deliveries are failing faster than they are being retried.",
-      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 0 },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 12,
+        "y": 0
+      },
       "fieldConfig": {
         "defaults": {
           "unit": "s",
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              { "color": "green", "value": null },
-              { "color": "orange", "value": 300 },
-              { "color": "red", "value": 900 }
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 300
+              },
+              {
+                "color": "red",
+                "value": 900
+              }
             ]
           }
         }
       },
-      "options": { "colorMode": "background", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "options": {
+        "colorMode": "background",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
       "targets": [
-        { "refId": "A", "expr": "max(notifications_oldest_retrying_age_seconds)", "legendFormat": "backlog age" }
+        {
+          "refId": "A",
+          "expr": "max(notifications_oldest_retrying_age_seconds)",
+          "legendFormat": "backlog age"
+        }
       ]
     },
     {
       "type": "stat",
       "title": "Retry budgets exhausted",
       "description": "Events that reached FAILED. Each one is a client who did not get their notification and can now replay it.",
-      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 0 },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 18,
+        "y": 0
+      },
       "fieldConfig": {
         "defaults": {
           "unit": "short",
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              { "color": "green", "value": null },
-              { "color": "red", "value": 1 }
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
             ]
           }
         }
       },
-      "options": { "colorMode": "background", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "options": {
+        "colorMode": "background",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
       "targets": [
-        { "refId": "A", "expr": "sum(increase(notifications_retries_exhausted_total[1h]))", "legendFormat": "last hour" }
+        {
+          "refId": "A",
+          "expr": "sum(increase(notifications_retries_exhausted_total[1h]))",
+          "legendFormat": "last hour"
+        }
       ]
     },
     {
       "type": "timeseries",
       "title": "Delivery outcomes by origin",
       "description": "SYSTEM, RETRY_SERVICE and SELF_SERVICE all travel the same pipeline. This panel is what makes the three visible as one flow.",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 5 },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 5
+      },
       "fieldConfig": {
         "defaults": {
           "unit": "reqps",
-          "custom": { "fillOpacity": 18, "lineWidth": 2, "stacking": { "mode": "normal" } }
-        }
+          "custom": {
+            "fillOpacity": 18,
+            "lineWidth": 2,
+            "stacking": {
+              "mode": "normal"
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*SUCCESS.*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "green"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*FAILED.*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "red"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "RETRY_SERVICE.*SUCCESS"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "semi-dark-green"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "SELF_SERVICE.*SUCCESS"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "light-green"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "RETRY_SERVICE.*FAILED"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "orange"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "SELF_SERVICE.*FAILED"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "semi-dark-red"
+                }
+              }
+            ]
+          }
+        ]
       },
       "targets": [
         {
           "refId": "A",
           "expr": "sum by (dispatch_source, status) (rate(notifications_delivery_attempts_total[1m]))",
-          "legendFormat": "{{dispatch_source}} · {{status}}"
+          "legendFormat": "{{dispatch_source}} \u00b7 {{status}}"
         }
-      ]
+      ],
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
     },
     {
       "type": "timeseries",
       "title": "Webhook latency",
       "description": "Wall clock per delivery cycle, including in-process retries. A rising p95 with a flat p50 means a subset of client endpoints is degrading.",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 5 },
-      "fieldConfig": { "defaults": { "unit": "s", "custom": { "fillOpacity": 8, "lineWidth": 2 } } },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 5
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "fillOpacity": 8,
+            "lineWidth": 2
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "p50"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "green"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "p95"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "yellow"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "p99"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "orange"
+                }
+              }
+            ]
+          }
+        ]
+      },
       "targets": [
         {
           "refId": "A",
@@ -133,13 +404,85 @@
           "expr": "histogram_quantile(0.99, sum by (le) (rate(notifications_delivery_duration_seconds_bucket[5m])))",
           "legendFormat": "p99"
         }
-      ]
+      ],
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
     },
     {
       "type": "timeseries",
       "title": "Retry activity",
-      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 13 },
-      "fieldConfig": { "defaults": { "unit": "short", "custom": { "fillOpacity": 12, "lineWidth": 2 } } },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 13
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "fillOpacity": 12,
+            "lineWidth": 2
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "requeued per minute"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "exhausted per minute"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "red"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "reclaimed mid-flight per minute"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "purple"
+                }
+              }
+            ]
+          }
+        ]
+      },
       "targets": [
         {
           "refId": "A",
@@ -156,21 +499,105 @@
           "expr": "sum(rate(notifications_deliveries_reclaimed_total[1m])) * 60",
           "legendFormat": "reclaimed mid-flight per minute"
         }
-      ]
+      ],
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
     },
     {
       "type": "timeseries",
       "title": "Kafka consumption",
-      "description": "A rising retry line here means the dispatcher cannot commit — the database or the subscription service is unavailable, and messages are being redelivered rather than lost.",
-      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 13 },
-      "fieldConfig": { "defaults": { "unit": "short", "custom": { "fillOpacity": 12, "lineWidth": 2 } } },
+      "description": "A rising retry line here means the dispatcher cannot commit \u2014 the database or the subscription service is unavailable, and messages are being redelivered rather than lost.",
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 13
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "fillOpacity": 12,
+            "lineWidth": 2
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "processed.*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "green"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "retry.*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "orange"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "poison.*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "red"
+                }
+              }
+            ]
+          }
+        ]
+      },
       "targets": [
         {
           "refId": "A",
           "expr": "sum by (outcome) (rate(notifications_consumer_messages_total[1m])) * 60",
           "legendFormat": "{{outcome}} per minute"
         }
-      ]
+      ],
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
     }
   ]
 }
