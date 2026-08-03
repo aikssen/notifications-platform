@@ -11,9 +11,9 @@
     "seed": "tsx src/seed.ts",
     "subscribe-all": "tsx src/subscribe-all.ts",
     "deliver-all": "tsx src/deliver-all.ts",
-    "publish": "tsx src/publish.ts",
     "test": "vitest run --passWithNoTests",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "publish-event": "tsx src/publish.ts"
   },
   "dependencies": {
     "express": "^5.1.0",

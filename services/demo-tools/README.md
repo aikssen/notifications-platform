@@ -15,15 +15,25 @@ and **was** the Kafka producer. That is a mock wearing a service's name, and a
 technical panel notices. Splitting the simulation out leaves the subscription
 service doing one thing.
 
-## Commands
+## Every action is available twice
 
-| | |
-|---|---|
-| `make subscribe-all` | register a subscription for every client and event type in the fixture |
-| `make deliver-all` | publish all ten fixture events onto the delivery topic |
-| `make seed` | load the fixture as settled history instead |
-| `pnpm publish -- --client CLIENT001 --type credit_card_payment` | one ad-hoc event |
-| `pnpm start` | run the webhook receiver (this is what the container does) |
+Once as a CLI script, and once as an HTTP endpoint — because the demo is driven
+from Postman, and switching to a terminal mid-presentation to run a shell
+script is exactly the kind of seam that makes a demo feel improvised.
+
+Both paths call the same functions in `src/simulate.ts`, so they cannot drift.
+
+| Action | HTTP | CLI |
+|---|---|---|
+| Register the fixture's subscriptions | `POST /simulate/subscribe-all` | `make subscribe-all` |
+| Deliver all ten fixture events | `POST /simulate/deliver-all` | `make deliver-all` |
+| Publish one event | `POST /simulate/publish` | `pnpm run publish-event --client CLIENT001` |
+| Load the fixture as history | `POST /simulate/seed` | `make seed` |
+| Make the webhook fail | `POST /control` | `make fail-next N=20` |
+| See what arrived | `GET /received` | — |
+
+`POST /simulate/subscribe-all` takes a `webhook_url` in the body — that is what
+you use on presentation day with the public HTTPS endpoint the panel provides.
 
 ### `deliver-all` and `seed` are alternatives, not a sequence
 

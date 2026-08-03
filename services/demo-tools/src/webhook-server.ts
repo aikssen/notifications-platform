@@ -21,6 +21,9 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 
 import express from 'express';
 
+import { simulationRoutes } from './simulation-routes.js';
+import { closeProducer } from './simulate.js';
+
 const app = express();
 const PORT = Number(process.env.DEMO_TOOLS_PORT ?? 3004);
 
@@ -69,6 +72,19 @@ const history: Received[] = [];
 // Raw body, because a signature is over bytes. Re-serialising parsed JSON
 // changes key order and whitespace, and the signature stops matching.
 app.use(express.raw({ type: '*/*', limit: '1mb' }));
+
+// The simulation endpoints, so the whole demo can be driven from Postman
+// without switching to a terminal.
+app.use(
+  simulationRoutes({
+    brokers: (process.env.KAFKA_BROKERS ?? 'kafka:29092').split(',').map((b) => b.trim()).filter(Boolean),
+    topic: process.env.KAFKA_TOPIC_DISPATCH ?? 'notifications.dispatch',
+    databaseUrl: process.env.DATABASE_URL ?? '',
+    subscriptionsBaseUrl: process.env.SUBSCRIPTIONS_BASE_URL ?? 'http://subscription-service:3001',
+    defaultWebhookUrl: process.env.WEBHOOK_URL ?? `http://demo-tools:${PORT}/webhook`,
+    receiverUrl: `http://localhost:${PORT}`,
+  }),
+);
 
 app.get('/healthz', (_req, res) => {
   res.json({ status: 'ok', behaviour, received: history.length, secrets: secrets.size });
@@ -172,10 +188,28 @@ app.post('/webhook', async (req, res) => {
   res.status(status).json({ status: 'received' });
 });
 
-app.listen(PORT, () => {
-  console.log(`demo webhook receiver listening on ${PORT}`);
-  console.log('POST /secrets with the subscription secrets to have signatures verified');
+const server = app.listen(PORT, () => {
+  console.log(`demo-tools listening on ${PORT}`);
+  console.log('  POST /simulate/subscribe-all   register the fixture\'s subscriptions');
+  console.log('  POST /simulate/deliver-all     push all ten fixture events');
+  console.log('  POST /simulate/publish         publish one event');
+  console.log('  POST /simulate/seed            load the fixture as history');
+  console.log('  POST /control                  make the webhook fail on demand');
+  console.log('  GET  /received                 what the client endpoint got');
 });
+
+const shutdown = (signal: string): void => {
+  console.log(`[demo-tools] ${signal}, shutting down`);
+  server.close(() => {
+    closeProducer()
+      .then(() => process.exit(0))
+      .catch(() => process.exit(1));
+  });
+  setTimeout(() => process.exit(1), 10_000).unref();
+};
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
 
 /**
  * The reference implementation of signature verification, for a client to

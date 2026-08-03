@@ -1,17 +1,25 @@
 {
   "info": {
-    "name": "Cobre Notifications",
-    "description": "Client-facing APIs for the notifications platform.\n\nThe collection fetches and caches a bearer token automatically — set the `client_id` variable and every request is authenticated as that client. Switch it to `CLIENT002` and the same requests demonstrate tenant isolation: the events you could read a moment ago now answer 404.\n\nImport `openapi.yaml` alongside this if you want the full schema reference.",
+    "name": "Cobre Notifications — full demo",
+    "description": "The entire demo, driven from Postman. No terminal.\n\nThe folders are numbered in the order they are meant to be run, and each one maps to a section of `docs/DEMO_RUNBOOK.md`.\n\n**Two kinds of request live here.**\n\nThe *product* APIs — self-service (3002) and subscriptions (3001) — are what a real client calls. Every one of them requires a bearer token, and the client identity comes from the token's `sub` claim. No endpoint accepts a `client_id` parameter: that is the access-control model.\n\nThe *simulation* endpoints on demo-tools (3004) stand in for two things that are not part of the product: the platform microservices that emit business events, and a client's webhook endpoint. They need no auth and never run in a real deployment.\n\n**Tokens.** `0 · Setup / Get a token` fetches one explicitly, and a collection-level pre-request script also fetches one automatically whenever `client_id` changes — so switching the `client_id` variable to `CLIENT002` and re-running any request demonstrates tenant isolation immediately.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
     { "key": "self_service", "value": "http://localhost:3002" },
     { "key": "subscriptions", "value": "http://localhost:3001" },
+    { "key": "demo_tools", "value": "http://localhost:3004" },
+    { "key": "monitor", "value": "http://localhost:3003" },
     { "key": "client_id", "value": "CLIENT001" },
+    {
+      "key": "webhook_url",
+      "value": "http://demo-tools:3004/webhook",
+      "description": "On presentation day, replace with the public HTTPS URL the panel provides."
+    },
     { "key": "token", "value": "" },
     { "key": "token_client", "value": "" },
     { "key": "notification_event_id", "value": "" },
-    { "key": "subscription_id", "value": "" }
+    { "key": "subscription_id", "value": "" },
+    { "key": "demo_event_id", "value": "EVT-DEMO" }
   ],
   "auth": {
     "type": "bearer",
@@ -23,12 +31,18 @@
       "script": {
         "type": "text/javascript",
         "exec": [
-          "// Fetch a token on demand, and re-fetch whenever client_id changes.",
-          "// The demo token endpoint is only mounted when ENABLE_DEMO_TOKENS=true.",
-          "const clientId = pm.collectionVariables.get('client_id');",
-          "const cachedFor = pm.collectionVariables.get('token_client');",
+          "// Fetch a token on demand, and re-fetch whenever client_id changes,",
+          "// so switching client demonstrates tenant isolation with no extra steps.",
+          "//",
+          "// Skipped for the token request itself and for demo-tools, which",
+          "// simulates infrastructure and takes no auth.",
+          "const url = pm.request.url.toString();",
+          "if (url.includes('/auth/token') || url.includes('{{demo_tools}}') || url.includes(':3004')) {",
+          "  return;",
+          "}",
           "",
-          "if (pm.collectionVariables.get('token') && cachedFor === clientId) {",
+          "const clientId = pm.collectionVariables.get('client_id');",
+          "if (pm.collectionVariables.get('token') && pm.collectionVariables.get('token_client') === clientId) {",
           "  return;",
           "}",
           "",
@@ -39,7 +53,7 @@
           "  body: { mode: 'raw', raw: JSON.stringify({ client_id: clientId }) }",
           "}, (err, res) => {",
           "  if (err || res.code !== 200) {",
-          "    console.error('could not obtain a token', err || res.code);",
+          "    console.error('could not obtain a token — is ENABLE_DEMO_TOKENS set?', err || res.code);",
           "    return;",
           "  }",
           "  pm.collectionVariables.set('token', res.json().access_token);",
@@ -51,7 +65,142 @@
   ],
   "item": [
     {
-      "name": "Notification events",
+      "name": "0 · Setup",
+      "description": "Run these three in order. Roughly 30 seconds, and the platform is holding the case statement's own dataset, delivered for real.",
+      "item": [
+        {
+          "name": "Get a token",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "content-type", "value": "application/json" }],
+            "url": {
+              "raw": "{{self_service}}/auth/token",
+              "host": ["{{self_service}}"],
+              "path": ["auth", "token"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"client_id\": \"{{client_id}}\"\n}"
+            },
+            "description": "A demo affordance, mounted only when `ENABLE_DEMO_TOKENS=true`. A real deployment obtains tokens from the platform's identity provider — the middleware is where that changes, and nothing else moves.\n\nThe token is HS256 with the algorithm pinned and the issuer and audience validated. Its `sub` claim is the client identity, and it is the only source of it anywhere in the platform.\n\nBoth APIs share the issuer and audience, so one token works against self-service and subscriptions alike.\n\nThe response is stored in the `token` variable, but the collection also fetches one automatically — you do not have to run this first. It is here so the token flow is visible rather than hidden in a script."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set('token', body.access_token);",
+                  "pm.collectionVariables.set('token_client', pm.collectionVariables.get('client_id'));",
+                  "",
+                  "// The claim the whole access-control model rests on.",
+                  "const claims = JSON.parse(atob(body.access_token.split('.')[1]));",
+                  "pm.test('sub is the client identity', () =>",
+                  "  pm.expect(claims.sub).to.eql(pm.collectionVariables.get('client_id')));",
+                  "pm.test('audience and issuer are set', () => {",
+                  "  pm.expect(claims.aud).to.eql('notifications-api');",
+                  "  pm.expect(claims.iss).to.eql('notifications-platform');",
+                  "});",
+                  "console.log('token claims:', claims);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Register the fixture's subscriptions",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "content-type", "value": "application/json" }],
+            "url": {
+              "raw": "{{demo_tools}}/simulate/subscribe-all",
+              "host": ["{{demo_tools}}"],
+              "path": ["simulate", "subscribe-all"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"webhook_url\": \"{{webhook_url}}\",\n  \"expected_status\": 200\n}"
+            },
+            "description": "Registers one subscription per (client, event type) pair in the fixture — ten in total across three clients.\n\nIt goes through the **public** subscription API, so the SSRF guard runs and a signing secret is issued for each one, exactly as it would for a real client. The secrets are then handed to the demo webhook receiver, which is how a real client stores them: keyed by client and event type, since each subscription gets its own.\n\n**On presentation day**, set the `webhook_url` variable to the public HTTPS URL the panel provides and run this."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('no failures', () => pm.expect(body.failed).to.be.empty);",
+                  "console.log('registered', body.registered, 'subscriptions against', body.webhook_url);",
+                  "console.log('signing secrets handed to the receiver:', body.secretsHandedToReceiver);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Deliver the whole fixture",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "url": {
+              "raw": "{{demo_tools}}/simulate/deliver-all",
+              "host": ["{{demo_tools}}"],
+              "path": ["simulate", "deliver-all"]
+            },
+            "description": "Publishes all ten events from `fixtures/notification_events.json` onto the delivery topic, standing in for the platform's own producers.\n\nThis is the case statement's Task 2, executed: *obtain the list of notifications from a repository (the attached file) and deliver them via a webhook to a public https URL*.\n\nNothing here knows a webhook exists. It publishes an event and stops.\n\nWatch the operations dashboard at {{monitor}} while this runs."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('all ten fixture events published', () =>",
+                  "  pm.expect(pm.response.json().published).to.eql(10));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "What the client endpoint received",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": {
+              "raw": "{{demo_tools}}/received",
+              "host": ["{{demo_tools}}"],
+              "path": ["received"]
+            },
+            "description": "The deliveries as they arrived at the client's side, with the traceability headers and — crucially — the result of verifying the HMAC signature.\n\n`signature: \"valid\"` means the receiver recomputed HMAC-SHA256 over `<timestamp>.<raw body>` with that subscription's own secret and got the same value, in constant time, within a five-minute window."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('deliveries arrived', () => pm.expect(body.total).to.be.above(0));",
+                  "pm.test('every signature verified', () =>",
+                  "  body.received.forEach(r => pm.expect(r.signature).to.eql('valid')));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "1 · Notification events",
+      "description": "The three capabilities the case statement asks the self-service API to support.",
       "item": [
         {
           "name": "List — all",
@@ -61,7 +210,8 @@
               "raw": "{{self_service}}/notification_events",
               "host": ["{{self_service}}"],
               "path": ["notification_events"]
-            }
+            },
+            "description": "Always scoped to the authenticated client. There is no `client_id` parameter to pass — try adding one and the request is rejected outright, because the schema is strict."
           },
           "event": [
             {
@@ -70,13 +220,11 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('200', () => pm.response.to.have.status(200));",
-                  "",
                   "const events = pm.response.json().notification_events;",
                   "pm.test('every event belongs to the authenticated client', () => {",
                   "  const clientId = pm.collectionVariables.get('client_id');",
                   "  events.forEach(e => pm.expect(e.client_id).to.eql(clientId));",
                   "});",
-                  "",
                   "if (events.length) {",
                   "  pm.collectionVariables.set('notification_event_id', events[0].notification_event_id);",
                   "}"
@@ -93,9 +241,12 @@
               "raw": "{{self_service}}/notification_events?delivery_status=FAILED",
               "host": ["{{self_service}}"],
               "path": ["notification_events"],
-              "query": [{ "key": "delivery_status", "value": "FAILED" }]
+              "query": [
+                { "key": "delivery_status", "value": "FAILED" },
+                { "key": "state", "value": "DELIVERED", "disabled": true }
+              ]
             },
-            "description": "One of the two filters the case statement requires. FAILED events are the ones the replay endpoint acts on."
+            "description": "One of the two filters the brief requires. `delivery_status` is an alias for `state` — the brief and the fixture use that word, and a client should not have to learn our internal vocabulary to filter.\n\nFAILED is the state the replay endpoint acts on, so this request is also how you find something to replay."
           },
           "event": [
             {
@@ -109,6 +260,7 @@
                   "  events.forEach(e => pm.expect(e.delivery_status).to.eql('FAILED')));",
                   "if (events.length) {",
                   "  pm.collectionVariables.set('notification_event_id', events[0].notification_event_id);",
+                  "  console.log('replay candidate:', events[0].event_id);",
                   "}"
                 ]
               }
@@ -116,24 +268,42 @@
           ]
         },
         {
-          "name": "List — filter by creation date",
+          "name": "List — filter by creation date, paginated",
           "request": {
             "method": "GET",
             "url": {
-              "raw": "{{self_service}}/notification_events?created_from=2024-01-01T00:00:00Z&page_size=10",
+              "raw": "{{self_service}}/notification_events?created_from=2020-01-01T00:00:00Z&page=1&page_size=5",
               "host": ["{{self_service}}"],
               "path": ["notification_events"],
               "query": [
-                { "key": "created_from", "value": "2024-01-01T00:00:00Z" },
-                { "key": "created_to", "value": "2030-01-01T00:00:00Z", "disabled": true },
-                { "key": "page_size", "value": "10" }
+                { "key": "created_from", "value": "2020-01-01T00:00:00Z" },
+                { "key": "created_to", "value": "2099-01-01T00:00:00Z", "disabled": true },
+                { "key": "page", "value": "1" },
+                { "key": "page_size", "value": "5" }
               ]
             },
-            "description": "The other required filter, with pagination. page_size is capped at 100 so one request cannot pull the whole table."
-          }
+            "description": "The other required filter. `page_size` is capped at 100 so a single request cannot pull the whole table.\n\nSet `created_from` to 2099 to watch the result go empty — the filter is real, not decorative."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const p = pm.response.json().pagination;",
+                  "pm.test('pagination is reported', () => {",
+                  "  pm.expect(p.page).to.eql(1);",
+                  "  pm.expect(p.page_size).to.eql(5);",
+                  "  pm.expect(p.total).to.be.a('number');",
+                  "});"
+                ]
+              }
+            }
+          ]
         },
         {
-          "name": "Detail — with delivery history",
+          "name": "Detail — the full delivery history",
           "request": {
             "method": "GET",
             "url": {
@@ -141,7 +311,7 @@
               "host": ["{{self_service}}"],
               "path": ["notification_events", "{{notification_event_id}}"]
             },
-            "description": "Every attempt made for this event, with the request as sent and the response as received.\n\nRun this against an event that failed and was later replayed: the attempts show SYSTEM, then RETRY_SERVICE, then SELF_SERVICE — three origins, one pipeline."
+            "description": "Every attempt made for this event: the request as sent and the response as received.\n\nRun this against an event that failed and was later replayed and the attempts read: `SYSTEM`, then `RETRY_SERVICE` several times, then `SELF_SERVICE`. Three origins, one pipeline — that table is the architecture."
           },
           "event": [
             {
@@ -153,13 +323,19 @@
                   "const body = pm.response.json();",
                   "pm.test('the original payload is preserved', () =>",
                   "  pm.expect(body.event_payload).to.not.be.undefined);",
-                  "pm.test('attempts carry the request as sent', () => {",
-                  "  if (!body.attempts.length) return;",
+                  "",
+                  "// These three came back undefined in the previous version — the",
+                  "// mapper read camelCase keys off snake_case rows.",
+                  "if (body.attempts.length) {",
                   "  const a = body.attempts[0];",
-                  "  pm.expect(a.webhook_url).to.be.a('string');",
-                  "  pm.expect(a.request_method).to.be.a('string');",
-                  "  pm.expect(a.request_payload).to.not.be.undefined;",
-                  "});"
+                  "  pm.test('the request as sent is recorded', () => {",
+                  "    pm.expect(a.webhook_url).to.be.a('string');",
+                  "    pm.expect(a.request_method).to.be.a('string');",
+                  "    pm.expect(a.request_payload).to.not.be.undefined;",
+                  "  });",
+                  "  console.log('attempts:', body.attempts.map(x =>",
+                  "    `${x.attempt_number} ${x.dispatch_source} ${x.status}`).join(' | '));",
+                  "}"
                 ]
               }
             }
@@ -174,7 +350,7 @@
               "host": ["{{self_service}}"],
               "path": ["notification_events", "{{notification_event_id}}", "replay"]
             },
-            "description": "Only an event in FAILED can be replayed — 409 for anything else.\n\nNo request body: the client identity comes from the token. The replay publishes the original payload onto the same topic a first delivery uses, tagged SELF_SERVICE, so it returns 202 and the outcome appears as a new attempt."
+            "description": "*\"Re-send a notification when delivery has definitely failed.\"*\n\nOnly an event in `FAILED` can be replayed — anything else answers 409 with an explanation. Run `List — filter by delivery_status` first to load a valid candidate.\n\nNo request body: the client identity comes from the token.\n\nThe endpoint does not deliver anything itself. It publishes the original payload back onto the same topic a first delivery arrives on, tagged `SELF_SERVICE`, so it answers 202 and the outcome shows up as a new attempt on the event."
           },
           "event": [
             {
@@ -182,12 +358,13 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('202 for a FAILED event, 409 otherwise', () =>",
+                  "pm.test('202 for FAILED, 409 for anything else', () =>",
                   "  pm.expect([202, 409]).to.include(pm.response.code));",
                   "",
                   "if (pm.response.code === 202) {",
-                  "  pm.test('the event is handed back to the pipeline', () =>",
+                  "  pm.test('handed back to the pipeline', () =>",
                   "    pm.expect(pm.response.json().state).to.eql('RETRYING'));",
+                  "  console.log('replay accepted — watch the dashboard for a SELF_SERVICE row');",
                   "} else {",
                   "  console.log('refused:', pm.response.json().message);",
                   "}"
@@ -199,7 +376,135 @@
       ]
     },
     {
-      "name": "Subscriptions",
+      "name": "2 · Failure, retry and exhaustion",
+      "description": "Run these in order to watch one event travel the whole lifecycle. Roughly a minute.\n\nThe demo webhook fails on request, not at random — the previous mock returned 500 half the time, which made this impossible to demonstrate reliably.",
+      "item": [
+        {
+          "name": "Make the webhook fail",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "content-type", "value": "application/json" }],
+            "url": {
+              "raw": "{{demo_tools}}/control",
+              "host": ["{{demo_tools}}"],
+              "path": ["control"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"failNext\": 50\n}"
+            },
+            "description": "The next 50 deliveries return 500 — enough to spend a whole retry budget without the endpoint recovering mid-way.\n\nOther modes:\n- `{\"status\": 503}` — every delivery fails\n- `{\"delayMs\": 6000}` — every delivery hangs, to demonstrate the timeout\n- `{\"reset\": true}` — back to succeeding"
+          }
+        },
+        {
+          "name": "Publish one event",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "content-type", "value": "application/json" }],
+            "url": {
+              "raw": "{{demo_tools}}/simulate/publish",
+              "host": ["{{demo_tools}}"],
+              "path": ["simulate", "publish"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"client_id\": \"{{client_id}}\",\n  \"event_type\": \"credit_card_payment\",\n  \"event_id\": \"{{demo_event_id}}\",\n  \"content\": \"Credit card payment received for $150.00\"\n}"
+            },
+            "description": "Stands in for a platform microservice emitting a business event.\n\nOmit `event_id` and a fresh one is generated. Send the **same** `event_id` twice to demonstrate idempotency: the second publish creates nothing new, because `event_id` is a unique constraint and the dispatcher re-reads the existing row.\n\nNow watch the dashboard: attempt 1 `SYSTEM` fails, then `RETRY_SERVICE` attempts appear with growing gaps, then the event reaches `FAILED`. About 45 seconds with the demo retry settings."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const published = pm.response.json().published;",
+                  "pm.collectionVariables.set('demo_event_id', published.event_id);",
+                  "console.log('published', published.event_id, '— watch the dashboard');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Find it once the budget is spent",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{self_service}}/notification_events?delivery_status=FAILED",
+              "host": ["{{self_service}}"],
+              "path": ["notification_events"],
+              "query": [{ "key": "delivery_status", "value": "FAILED" }]
+            },
+            "description": "Wait ~45 seconds after publishing, then run this. The event appears as `FAILED` — the state the retry service writes when the budget runs out, and the only state the replay endpoint accepts.\n\nThis is what was unreachable in the previous version: a failed delivery went back to `PENDING`, so nothing ever declared an event definitively failed, and the replay endpoint guarded on the wrong states."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const events = pm.response.json().notification_events;",
+                  "const target = events.find(e => e.event_id === pm.collectionVariables.get('demo_event_id'));",
+                  "",
+                  "if (target) {",
+                  "  pm.collectionVariables.set('notification_event_id', target.notification_event_id);",
+                  "  pm.test('the retry budget was spent', () => pm.expect(target.retry_count).to.be.above(0));",
+                  "  console.log('FAILED after', target.retry_count, 'asynchronous retries');",
+                  "} else {",
+                  "  console.log('not FAILED yet — give the retry budget a few more seconds');",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Let the webhook succeed again",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "content-type", "value": "application/json" }],
+            "url": {
+              "raw": "{{demo_tools}}/control",
+              "host": ["{{demo_tools}}"],
+              "path": ["control"]
+            },
+            "body": { "mode": "raw", "raw": "{\n  \"reset\": true\n}" },
+            "description": "Run this before replaying, so the replay has something to succeed against."
+          }
+        },
+        {
+          "name": "Replay it",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{self_service}}/notification_events/{{notification_event_id}}/replay",
+              "host": ["{{self_service}}"],
+              "path": ["notification_events", "{{notification_event_id}}", "replay"]
+            },
+            "description": "Then open `1 · Notification events / Detail` and look at the attempts:\n\n| attempt | origin | status |\n|---|---|---|\n| 1 | SYSTEM | FAILED |\n| 2–5 | RETRY_SERVICE | FAILED |\n| 6 | SELF_SERVICE | SUCCESS |\n\nSix attempts, three origins, one pipeline. They differ in one field, which exists so this table can tell them apart — there is no second implementation of delivery that could drift from the first.\n\n**This is the strongest moment of the demo.**"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('202', () => pm.response.to.have.status(202));",
+                  "console.log('now open the Detail request and read the attempts table');"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3 · Subscriptions and the SSRF guard",
       "item": [
         {
           "name": "Create",
@@ -213,9 +518,9 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"webhook_url\": \"https://client.example.com/hooks/payments\",\n  \"method\": \"POST\",\n  \"expected_status\": 200,\n  \"events\": [\"credit_card_payment\"]\n}"
+              "raw": "{\n  \"webhook_url\": \"https://client.example.com/hooks/payments\",\n  \"method\": \"POST\",\n  \"expected_status\": 201,\n  \"events\": [\"invoice_settled\"]\n}"
             },
-            "description": "No client_id in the body — it comes from the token. Adding one is rejected: the schema is strict.\n\nsigning_secret is returned exactly once."
+            "description": "No `client_id` in the body — it comes from the token. Add one and the request is rejected: the schema is strict, so an unknown field is a refusal rather than a silent pass-through.\n\n`expected_status` is the client's own success contract. Declaring 201 means a 200 counts as a failed delivery — the previous version resolved this field and then ignored it, accepting any 2xx.\n\n`signing_secret` is returned **exactly once**, here. It is never readable again, in any response."
           },
           "event": [
             {
@@ -225,7 +530,6 @@
                 "exec": [
                   "pm.test('201 created, or 409 if it already exists', () =>",
                   "  pm.expect([201, 409]).to.include(pm.response.code));",
-                  "",
                   "if (pm.response.code === 201) {",
                   "  const sub = pm.response.json().subscriptions[0];",
                   "  pm.collectionVariables.set('subscription_id', sub.subscription_id);",
@@ -238,7 +542,7 @@
           ]
         },
         {
-          "name": "Create — refused by the SSRF guard",
+          "name": "Refused — cloud metadata (OWASP A10)",
           "request": {
             "method": "POST",
             "header": [{ "key": "content-type", "value": "application/json" }],
@@ -251,7 +555,7 @@
               "mode": "raw",
               "raw": "{\n  \"webhook_url\": \"https://169.254.169.254/latest/meta-data/iam/\",\n  \"events\": [\"ssrf_probe\"]\n}"
             },
-            "description": "OWASP A10. The cloud instance metadata endpoint — a webhook pointed here would have the platform fetch credentials from inside the VPC on the caller's behalf.\n\nAlso try: https://127.0.0.1/hook, https://10.0.0.1/hook, https://client.example.com:5432/hook, and a plain http:// URL.\n\nNote: the local demo relaxes address-range blocking (WEBHOOK_ALLOW_PRIVATE_NETWORKS), so only the port rules bite by default. Set it to false to see the full guard."
+            "description": "The core feature of this platform is that a client tells it which URL to call. That is a request-forgery primitive offered as a product.\n\nPointed here, the platform would fetch cloud credentials on the caller's behalf from inside the VPC and store the response in `notification_attempts.response_body` — where the caller can read it back through the self-service API.\n\nAlso try `https://127.0.0.1/hook`, `https://10.0.0.1/hook`, `http://client.example.com/hook`, and `https://user:pw@client.example.com/hook`.\n\n**Note:** the local demo relaxes address-range blocking (`WEBHOOK_ALLOW_PRIVATE_NETWORKS=true`), because the demo webhook runs on a private Docker network. Set it to `false` in `.env` and restart the subscription service to see the full guard — both services log a warning at startup whenever it is relaxed."
           },
           "event": [
             {
@@ -264,8 +568,39 @@
                   "    pm.expect(pm.response.json().code).to.be.a('string'));",
                   "  console.log('refused:', pm.response.json().message);",
                   "} else {",
-                  "  console.log('accepted — the guard is relaxed for the local demo');",
+                  "  console.log('accepted — address-range blocking is relaxed for the local demo');",
                   "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Refused — a database port",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "content-type", "value": "application/json" }],
+            "url": {
+              "raw": "{{subscriptions}}/subscriptions",
+              "host": ["{{subscriptions}}"],
+              "path": ["subscriptions"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"webhook_url\": \"https://client.example.com:5432/hook\",\n  \"events\": [\"ssrf_probe\"]\n}"
+            },
+            "description": "Port scanning disguised as a webhook. Refused in **every** mode, including the relaxed demo configuration — a webhook is never on 5432, 6379, 9092 or 22."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400', () => pm.response.to.have.status(400));",
+                  "pm.test('the port rule fired', () =>",
+                  "  pm.expect(pm.response.json().code).to.eql('PORT_NOT_ALLOWED'));",
+                  "console.log(pm.response.json().message);"
                 ]
               }
             }
@@ -307,14 +642,14 @@
               "host": ["{{subscriptions}}"],
               "path": ["subscriptions", "{{subscription_id}}"]
             },
-            "description": "Deactivated, not deleted — a delivery that failed last week must stay explainable next month."
+            "description": "Deactivated, not deleted. A delivery that failed last week has to stay explainable next month, and its audit trail references this row."
           }
         }
       ]
     },
     {
-      "name": "Access control",
-      "description": "Set client_id to CLIENT002, run these, and watch resources that were readable a moment ago answer 404.",
+      "name": "4 · Access control",
+      "description": "Set the `client_id` variable to `CLIENT002`, run these, and watch resources that were readable a moment ago answer 404. The pre-request script re-fetches the token automatically.",
       "item": [
         {
           "name": "No token",
@@ -332,21 +667,23 @@
               "listen": "test",
               "script": {
                 "type": "text/javascript",
-                "exec": [
-                  "pm.test('401', () => pm.response.to.have.status(401));",
-                  "pm.test('does not say why', () =>",
-                  "  pm.expect(pm.response.json().message).to.eql('Invalid or expired token').or.to.include('required'));"
-                ]
+                "exec": ["pm.test('401', () => pm.response.to.have.status(401));"]
               }
             }
           ]
         },
         {
-          "name": "Forged token",
+          "name": "Forged token — alg: none",
           "request": {
             "auth": {
               "type": "bearer",
-              "bearer": [{ "key": "token", "value": "eyJhbGciOiJub25lIn0.eyJzdWIiOiJDTElFTlQwMDEifQ.", "type": "string" }]
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "eyJhbGciOiJub25lIn0.eyJzdWIiOiJDTElFTlQwMDEiLCJhdWQiOiJub3RpZmljYXRpb25zLWFwaSIsImlzcyI6Im5vdGlmaWNhdGlvbnMtcGxhdGZvcm0ifQ.",
+                  "type": "string"
+                }
+              ]
             },
             "method": "GET",
             "url": {
@@ -354,14 +691,18 @@
               "host": ["{{self_service}}"],
               "path": ["notification_events"]
             },
-            "description": "An `alg: none` token. Refused because the verification algorithm is pinned to HS256 rather than read from the token's own header."
+            "description": "A token claiming `alg: none`, with a valid-looking `sub`, `aud` and `iss` and no signature at all.\n\nRefused because the verification algorithm is pinned to HS256 in code rather than read from the token's own header. Without that pin, an attacker-controlled header decides how the token is verified — which is the `alg: none` forgery, and its cousin, RS256 downgraded to HS256."
           },
           "event": [
             {
               "listen": "test",
               "script": {
                 "type": "text/javascript",
-                "exec": ["pm.test('401', () => pm.response.to.have.status(401));"]
+                "exec": [
+                  "pm.test('401', () => pm.response.to.have.status(401));",
+                  "pm.test('does not say why', () =>",
+                  "  pm.expect(pm.response.json().message).to.eql('Invalid or expired token'));"
+                ]
               }
             }
           ]
@@ -375,7 +716,7 @@
               "host": ["{{self_service}}"],
               "path": ["notification_events", "{{notification_event_id}}"]
             },
-            "description": "Capture notification_event_id as CLIENT001, then switch the client_id variable to CLIENT002 and run this.\n\n404, not 403 — a 403 would confirm the id exists, turning the endpoint into an enumeration oracle."
+            "description": "Capture `notification_event_id` as CLIENT001, then switch the `client_id` variable to CLIENT002 and run this.\n\n**404, not 403.** A 403 would confirm the id exists, turning the endpoint into an enumeration oracle.\n\nIn the previous version this returned the other client's payment payloads: the identity came from a query parameter, and the detail endpoint never compared the owner at all."
           },
           "event": [
             {
@@ -383,9 +724,80 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('404 for another client, never 403', () =>",
-                  "  pm.expect(pm.response.code).to.be.oneOf([200, 404]));",
-                  "pm.test('never 403', () => pm.expect(pm.response.code).to.not.eql(403));"
+                  "pm.test('200 for the owner, 404 for anyone else', () =>",
+                  "  pm.expect([200, 404]).to.include(pm.response.code));",
+                  "pm.test('never 403', () => pm.expect(pm.response.code).to.not.eql(403));",
+                  "console.log(pm.response.code === 404",
+                  "  ? 'refused — and indistinguishable from a nonexistent id'",
+                  "  : 'readable, because this is the owning client');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Another client's replay",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{self_service}}/notification_events/{{notification_event_id}}/replay",
+              "host": ["{{self_service}}"],
+              "path": ["notification_events", "{{notification_event_id}}", "replay"]
+            },
+            "description": "Ownership is part of the database lookup rather than a check applied to the result, so it cannot be forgotten at a call site — read and replay enforce it identically."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('never 403', () => pm.expect(pm.response.code).to.not.eql(403));",
+                  "pm.test('202, 404 or 409 — never another client\\'s event', () =>",
+                  "  pm.expect([202, 404, 409]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "5 · Reset",
+      "description": "Between rehearsals.",
+      "item": [
+        {
+          "name": "Clear what the webhook received",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "url": {
+              "raw": "{{demo_tools}}/received/reset",
+              "host": ["{{demo_tools}}"],
+              "path": ["received", "reset"]
+            }
+          }
+        },
+        {
+          "name": "Load the fixture as settled history instead",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "url": {
+              "raw": "{{demo_tools}}/simulate/seed",
+              "host": ["{{demo_tools}}"],
+              "path": ["simulate", "seed"]
+            },
+            "description": "An alternative starting point to `deliver-all`: writes the ten fixture events with their recorded outcome — seven `DELIVERED`, three `FAILED` — so the list filters and the replay endpoint are populated instantly.\n\nRunning this first makes `deliver-all` a no-op, and correctly so: those events are already in terminal states and the dispatcher refuses to deliver an event twice. Use `make reset-events` to switch between the two."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "console.log(pm.response.json().byState);"
                 ]
               }
             }

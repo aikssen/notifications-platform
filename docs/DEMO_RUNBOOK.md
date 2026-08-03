@@ -5,6 +5,28 @@ there is no step that says "if it fails, try again".
 
 **Total: about 12 minutes.** Sections marked *optional* are for questions.
 
+## Run it from Postman
+
+Import `docs/api/notifications.postman_collection.json`. Its folders are
+numbered in the order below, and **the whole demo runs from there** — including
+publishing events and making the client webhook fail, which are HTTP endpoints
+on `demo-tools` rather than shell scripts.
+
+| Runbook section | Postman folder |
+|---|---|
+| 2 · Subscriptions and SSRF | `0 · Setup`, `3 · Subscriptions and the SSRF guard` |
+| 3 · Deliver the fixture | `0 · Setup / Deliver the whole fixture` |
+| 4 · Failure and retry | `2 · Failure, retry and exhaustion` |
+| 5 · Self-service API | `1 · Notification events` |
+| 6 · Tenant isolation | `4 · Access control` |
+
+The `curl` commands below are the same calls, kept for anyone who prefers a
+terminal and for the two steps that genuinely need one — swapping the
+repository adapter and breaking the dependency rule.
+
+On presentation day, set the collection's `webhook_url` variable to the public
+HTTPS URL the panel provides, then run `0 · Setup` top to bottom.
+
 ---
 
 ## Before the room
@@ -98,9 +120,7 @@ curl -s -X POST localhost:3001/subscriptions \
 
 Put the dashboard on screen first.
 
-```bash
-make deliver-all
-```
+Postman: `0 · Setup / Deliver the whole fixture` (or `make deliver-all`).
 
 Watch ten rows arrive. Point at the `ORIGIN` column: all `SYSTEM`.
 
@@ -119,13 +139,13 @@ webhook.
 
 ## 4 · Failure, retry, exhaustion (3 min)
 
-```bash
-make fail-next N=30
+Postman: `2 · Failure, retry and exhaustion`, top to bottom.
 
-cd services/demo-tools
-KAFKA_BROKERS=localhost:9092 pnpm exec tsx src/publish.ts \
-  --client CLIENT001 --type credit_card_payment --event-id EVT-DEMO
-cd ../..
+```bash
+# the same two calls, if you prefer curl
+curl -X POST localhost:3004/control -H 'content-type: application/json' -d '{"failNext":50}'
+curl -X POST localhost:3004/simulate/publish -H 'content-type: application/json' \
+  -d '{"client_id":"CLIENT001","event_type":"credit_card_payment","event_id":"EVT-DEMO"}'
 ```
 
 The retry settings in `.env` are tuned for the demo: the budget is spent in
@@ -166,8 +186,11 @@ docker exec notif-platform-kafka kafka-console-consumer \
 
 ## 5 · The self-service API (2 min)
 
+Postman: `1 · Notification events`.
+
 ```bash
-make webhook-ok
+# the same calls, if you prefer curl
+curl -X POST localhost:3004/control -H 'content-type: application/json' -d '{"reset":true}'
 
 TOKEN=$(curl -s -X POST localhost:3002/auth/token \
   -H 'content-type: application/json' -d '{"client_id":"CLIENT001"}' \
