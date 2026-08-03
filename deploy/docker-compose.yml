@@ -111,6 +111,138 @@ services:
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
       - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
 
+  # -------------------------------------------------------------------------
+  # Application services
+  # -------------------------------------------------------------------------
+
+  subscription-service:
+    build:
+      context: ..
+      dockerfile: services/subscription-service/Dockerfile
+    container_name: notif-platform-subscriptions
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "${SUBSCRIPTION_SERVICE_PORT:-3001}:3001"
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-notifications}:${POSTGRES_PASSWORD:-notifications}@postgres:5432/${POSTGRES_DB:-notifications}?sslmode=disable
+      SUBSCRIPTION_SERVICE_PORT: 3001
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_ISSUER: ${JWT_ISSUER:-notifications-platform}
+      JWT_AUDIENCE: ${JWT_AUDIENCE:-notifications-api}
+      JWT_TTL_SECONDS: ${JWT_TTL_SECONDS:-3600}
+      # Demo only. A real deployment gets tokens from the platform's IdP.
+      ENABLE_DEMO_TOKENS: "true"
+      # The demo webhook is plain HTTP inside this network. Relaxing the guard
+      # is an explicit, logged decision — see the warning both services emit.
+      WEBHOOK_REQUIRE_HTTPS: ${WEBHOOK_REQUIRE_HTTPS:-false}
+      WEBHOOK_ALLOW_PRIVATE_NETWORKS: ${WEBHOOK_ALLOW_PRIVATE_NETWORKS:-true}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3001/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  dispatch-service:
+    build:
+      context: ../services/dispatch-service
+    container_name: notif-platform-dispatch
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      subscription-service:
+        condition: service_healthy
+    ports:
+      - "${DISPATCH_METRICS_PORT:-9101}:9101"
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-notifications}:${POSTGRES_PASSWORD:-notifications}@postgres:5432/${POSTGRES_DB:-notifications}?sslmode=disable
+      KAFKA_BROKERS: kafka:29092
+      KAFKA_TOPIC_DISPATCH: ${KAFKA_TOPIC_DISPATCH:-notifications.dispatch}
+      KAFKA_TOPIC_RESULT: ${KAFKA_TOPIC_RESULT:-notifications.delivery-result}
+      KAFKA_TOPIC_DLQ: ${KAFKA_TOPIC_DLQ:-notifications.dlq}
+      KAFKA_CONSUMER_GROUP: ${KAFKA_CONSUMER_GROUP:-notifications-dispatch}
+      SUBSCRIPTIONS_BASE_URL: http://subscription-service:3001
+      WEBHOOK_TIMEOUT_MS: ${WEBHOOK_TIMEOUT_MS:-5000}
+      WEBHOOK_SYNC_MAX_ATTEMPTS: ${WEBHOOK_SYNC_MAX_ATTEMPTS:-3}
+      WEBHOOK_SYNC_BASE_DELAY_MS: ${WEBHOOK_SYNC_BASE_DELAY_MS:-200}
+      WEBHOOK_SYNC_MAX_DELAY_MS: ${WEBHOOK_SYNC_MAX_DELAY_MS:-2000}
+      WEBHOOK_REQUIRE_HTTPS: ${WEBHOOK_REQUIRE_HTTPS:-false}
+      WEBHOOK_ALLOW_PRIVATE_NETWORKS: ${WEBHOOK_ALLOW_PRIVATE_NETWORKS:-true}
+      DISPATCH_METRICS_PORT: 9101
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+
+  retry-service:
+    build:
+      context: ../services/retry-service
+    container_name: notif-platform-retry
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    ports:
+      - "${RETRY_METRICS_PORT:-9102}:9102"
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-notifications}:${POSTGRES_PASSWORD:-notifications}@postgres:5432/${POSTGRES_DB:-notifications}?sslmode=disable
+      KAFKA_BROKERS: kafka:29092
+      KAFKA_TOPIC_DISPATCH: ${KAFKA_TOPIC_DISPATCH:-notifications.dispatch}
+      KAFKA_TOPIC_DLQ: ${KAFKA_TOPIC_DLQ:-notifications.dlq}
+      RETRY_MAX_ATTEMPTS: ${RETRY_MAX_ATTEMPTS:-5}
+      RETRY_BASE_DELAY_SECONDS: ${RETRY_BASE_DELAY_SECONDS:-10}
+      RETRY_MAX_DELAY_SECONDS: ${RETRY_MAX_DELAY_SECONDS:-900}
+      RETRY_POLL_INTERVAL_SECONDS: ${RETRY_POLL_INTERVAL_SECONDS:-5}
+      RETRY_BATCH_SIZE: ${RETRY_BATCH_SIZE:-50}
+      RETRY_METRICS_PORT: 9102
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+
+  self-service-api:
+    build:
+      context: ..
+      dockerfile: services/self-service-api/Dockerfile
+    container_name: notif-platform-self-service
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    ports:
+      - "${SELF_SERVICE_PORT:-3002}:3002"
+    volumes:
+      # The case statement's fixture, mounted rather than baked into the image
+      # so there is exactly one copy of it in the repository.
+      - ../fixtures:/fixtures:ro
+    environment:
+      FIXTURE_PATH: /fixtures/notification_events.json
+      DATABASE_URL: postgres://${POSTGRES_USER:-notifications}:${POSTGRES_PASSWORD:-notifications}@postgres:5432/${POSTGRES_DB:-notifications}?sslmode=disable
+      KAFKA_BROKERS: kafka:29092
+      KAFKA_TOPIC_DISPATCH: ${KAFKA_TOPIC_DISPATCH:-notifications.dispatch}
+      SELF_SERVICE_PORT: 3002
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_ISSUER: ${JWT_ISSUER:-notifications-platform}
+      JWT_AUDIENCE: ${JWT_AUDIENCE:-notifications-api}
+      JWT_TTL_SECONDS: ${JWT_TTL_SECONDS:-3600}
+      ENABLE_DEMO_TOKENS: "true"
+      # postgres | file — switching to `file` serves the case statement's
+      # JSON fixture through the same port, with no other change.
+      EVENTS_REPOSITORY: ${EVENTS_REPOSITORY:-postgres}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+
+  demo-tools:
+    build:
+      context: ..
+      dockerfile: services/demo-tools/Dockerfile
+    container_name: notif-platform-demo-tools
+    ports:
+      - "${DEMO_TOOLS_PORT:-3004}:3004"
+    environment:
+      DEMO_TOOLS_PORT: 3004
+      WEBHOOK_SIGNING_SECRET: ${WEBHOOK_SIGNING_SECRET:-}
+
 volumes:
   postgres_data:
   kafka_data:

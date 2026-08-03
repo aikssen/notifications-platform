@@ -56,15 +56,46 @@ topics:
 # demo
 # ---------------------------------------------------------------------
 
-## seed: load fixtures/notification_events.json as the initial platform state
-.PHONY: seed
-seed:
-	cd services/demo-tools && pnpm run seed
+# The demo scripts run on the host and talk to the published ports, so they
+# need host-facing values rather than the in-network ones the containers use.
+DEMO_ENV := DATABASE_URL="postgres://notifications:notifications@localhost:5432/notifications?sslmode=disable" \
+            KAFKA_BROKERS=localhost:9092 \
+            SUBSCRIPTIONS_BASE_URL=http://localhost:3001 \
+            WEBHOOK_CONTROL_URL=http://localhost:3004 \
+            FIXTURE_PATH=../../fixtures/notification_events.json
+
+## subscribe-all: register a subscription for every client and event type in the fixture
+.PHONY: subscribe-all
+subscribe-all:
+	cd services/demo-tools && $(DEMO_ENV) WEBHOOK_URL=$${WEBHOOK_URL:-http://demo-tools:3004/webhook} pnpm run subscribe-all
 
 ## deliver-all: push every fixture event through the real delivery pipeline
 .PHONY: deliver-all
 deliver-all:
-	cd services/demo-tools && pnpm run deliver-all
+	cd services/demo-tools && $(DEMO_ENV) pnpm run deliver-all
+
+## seed: load the fixture as settled history instead (alternative to deliver-all)
+.PHONY: seed
+seed:
+	cd services/demo-tools && $(DEMO_ENV) pnpm run seed
+
+## reset-events: clear notification data, keeping subscriptions
+.PHONY: reset-events
+reset-events:
+	$(COMPOSE) exec -T postgres psql -U $${POSTGRES_USER:-notifications} -d $${POSTGRES_DB:-notifications} \
+	  -c "TRUNCATE notification_attempts, notification_events CASCADE;"
+	@echo "notification events cleared"
+
+## fail-next: make the demo webhook reject the next N deliveries (make fail-next N=20)
+.PHONY: fail-next
+fail-next:
+	@curl -s -X POST localhost:3004/control -H 'content-type: application/json' \
+	  -d '{"failNext": $(or $(N),3)}' && echo
+
+## webhook-ok: put the demo webhook back to succeeding
+.PHONY: webhook-ok
+webhook-ok:
+	@curl -s -X POST localhost:3004/control -H 'content-type: application/json' -d '{"reset":true}' && echo
 
 # ---------------------------------------------------------------------
 # quality

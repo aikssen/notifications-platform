@@ -1,0 +1,31 @@
+{
+  "name": "demo-tools",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Stands in for the platform's producers and a client's webhook endpoint. Not part of the product.",
+  "scripts": {
+    "dev": "tsx watch src/webhook-server.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/webhook-server.js",
+    "seed": "tsx src/seed.ts",
+    "subscribe-all": "tsx src/subscribe-all.ts",
+    "deliver-all": "tsx src/deliver-all.ts",
+    "publish": "tsx src/publish.ts",
+    "test": "vitest run --passWithNoTests",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "kafkajs": "^2.2.4",
+    "pg": "^8.17.2",
+    "uuid": "^13.0.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/pg": "^8.16.0",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  }
+}
