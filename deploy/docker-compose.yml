@@ -232,6 +232,23 @@ services:
       EVENTS_REPOSITORY: ${EVENTS_REPOSITORY:-postgres}
       LOG_LEVEL: ${LOG_LEVEL:-info}
 
+  monitor-service:
+    build:
+      context: ..
+      dockerfile: services/monitor-service/Dockerfile
+    container_name: notif-platform-monitor
+    depends_on:
+      kafka:
+        condition: service_healthy
+    ports:
+      - "${MONITOR_SERVICE_PORT:-3003}:3003"
+    environment:
+      MONITOR_SERVICE_PORT: 3003
+      KAFKA_BROKERS: kafka:29092
+      KAFKA_TOPIC_RESULT: ${KAFKA_TOPIC_RESULT:-notifications.delivery-result}
+      SELF_SERVICE_BASE_URL: http://self-service-api:3002
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+
   demo-tools:
     build:
       context: ..

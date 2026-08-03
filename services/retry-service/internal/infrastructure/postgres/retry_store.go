@@ -120,6 +120,22 @@ func (s *RetryStore) MarkFailed(
 	return nil
 }
 
+// OldestRetryingAge measures from created_at rather than from the last
+// attempt: what matters operationally is how long the client has been waiting
+// for a notification, not how recently we last tried.
+func (s *RetryStore) OldestRetryingAge(ctx context.Context) (time.Duration, error) {
+	const query = `
+		SELECT COALESCE(EXTRACT(EPOCH FROM (now() - MIN(created_at))), 0)
+		FROM notification_events
+		WHERE state IN ('RETRYING', 'DELIVERING')`
+
+	var seconds float64
+	if err := s.pool.QueryRow(ctx, query).Scan(&seconds); err != nil {
+		return 0, fmt.Errorf("measure retry backlog: %w", err)
+	}
+	return time.Duration(seconds * float64(time.Second)), nil
+}
+
 // ReclaimStalled rescues events left in DELIVERING by a dispatcher that died
 // mid-delivery.
 //

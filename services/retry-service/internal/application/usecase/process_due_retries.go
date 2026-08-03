@@ -17,6 +17,7 @@ type Observer interface {
 	Exhausted(eventType string)
 	Reclaimed(n int)
 	CycleFinished(claimed int, d time.Duration)
+	BacklogAge(d time.Duration)
 }
 
 // ProcessDueRetries runs one pass of the retry loop.
@@ -102,6 +103,20 @@ func (uc *ProcessDueRetries) Execute(ctx context.Context) (int, error) {
 		uc.observer.CycleFinished(len(due), uc.clock.Now().Sub(started))
 	}
 	return len(due), nil
+}
+
+// ReportBacklog publishes how long the oldest undelivered event has waited.
+// Called on its own cadence, since it is a gauge rather than a counter and
+// costs one aggregate query.
+func (uc *ProcessDueRetries) ReportBacklog(ctx context.Context) error {
+	age, err := uc.store.OldestRetryingAge(ctx)
+	if err != nil {
+		return fmt.Errorf("report backlog: %w", err)
+	}
+	if uc.observer != nil {
+		uc.observer.BacklogAge(age)
+	}
+	return nil
 }
 
 func (uc *ProcessDueRetries) apply(ctx context.Context, d domain.Decision) error {

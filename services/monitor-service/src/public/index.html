@@ -1,0 +1,273 @@
+<!doctype html>
+<!--
+  Deliberately one self-contained file: no CDN, no bundler, no framework.
+
+  A dashboard that depends on a CDN is a dashboard that fails on the venue's
+  wifi, which is exactly when it is being demonstrated. Everything needed to
+  render this page is in the bytes the server already sent.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Notifications — Operations</title>
+<style>
+  :root {
+    --bg: #0f1219; --panel: #171b24; --line: #262c39;
+    --text: #e6e9ef; --muted: #8a93a6;
+    --ok: #3fb950; --fail: #f85149; --retry: #d29922; --info: #58a6ff;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #f6f8fa; --panel: #ffffff; --line: #d8dee4;
+      --text: #1f2328; --muted: #636c76;
+      --ok: #1a7f37; --fail: #cf222e; --retry: #9a6700; --info: #0969da;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  header {
+    display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+    padding: 16px 24px; border-bottom: 1px solid var(--line); background: var(--panel);
+  }
+  h1 { font-size: 16px; margin: 0; font-weight: 600; }
+  .status { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 13px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--fail); }
+  .dot.live { background: var(--ok); box-shadow: 0 0 0 0 var(--ok); animation: pulse 2s infinite; }
+  @keyframes pulse {
+    0% { box-shadow: 0 0 0 0 rgba(63,185,80,.6); }
+    70% { box-shadow: 0 0 0 7px rgba(63,185,80,0); }
+    100% { box-shadow: 0 0 0 0 rgba(63,185,80,0); }
+  }
+  header input {
+    margin-left: auto; padding: 7px 11px; min-width: 230px;
+    background: var(--bg); color: var(--text);
+    border: 1px solid var(--line); border-radius: 6px; font-size: 13px;
+  }
+  main { padding: 20px 24px; display: grid; gap: 20px; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
+  .tile { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; }
+  .tile .label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+  .tile .value { font-size: 26px; font-weight: 600; margin-top: 6px; font-variant-numeric: tabular-nums; }
+  .tile .sub { color: var(--muted); font-size: 12px; margin-top: 2px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .panel h2 {
+    font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted);
+    margin: 0; padding: 12px 16px; border-bottom: 1px solid var(--line); font-weight: 600;
+  }
+  .scroll { max-height: 60vh; overflow: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th {
+    text-align: left; padding: 9px 16px; color: var(--muted); font-weight: 500;
+    font-size: 11px; text-transform: uppercase; letter-spacing: .05em;
+    position: sticky; top: 0; background: var(--panel); border-bottom: 1px solid var(--line);
+  }
+  td { padding: 9px 16px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  tbody tr:last-child td { border-bottom: none; }
+  tr.new { animation: flash 1.2s ease-out; }
+  @keyframes flash { from { background: rgba(88,166,255,.16); } to { background: transparent; } }
+  code { font-family: var(--mono); font-size: 12px; }
+  .pill {
+    display: inline-block; padding: 2px 8px; border-radius: 999px;
+    font-size: 11px; font-weight: 600; letter-spacing: .02em;
+  }
+  .pill.DELIVERED, .pill.SUCCESS { background: color-mix(in srgb, var(--ok) 18%, transparent); color: var(--ok); }
+  .pill.FAILED { background: color-mix(in srgb, var(--fail) 18%, transparent); color: var(--fail); }
+  .pill.RETRYING, .pill.DELIVERING, .pill.PENDING { background: color-mix(in srgb, var(--retry) 20%, transparent); color: var(--retry); }
+  .pill.SYSTEM { background: color-mix(in srgb, var(--muted) 20%, transparent); color: var(--muted); }
+  .pill.RETRY_SERVICE { background: color-mix(in srgb, var(--retry) 18%, transparent); color: var(--retry); }
+  .pill.SELF_SERVICE { background: color-mix(in srgb, var(--info) 18%, transparent); color: var(--info); }
+  button.replay {
+    background: transparent; color: var(--info); border: 1px solid var(--info);
+    border-radius: 6px; padding: 3px 10px; font-size: 12px; cursor: pointer;
+  }
+  button.replay:hover { background: color-mix(in srgb, var(--info) 14%, transparent); }
+  button.replay:disabled { opacity: .45; cursor: default; }
+  .muted { color: var(--muted); }
+  .empty { padding: 32px 16px; text-align: center; color: var(--muted); }
+  footer { padding: 0 24px 24px; color: var(--muted); font-size: 12px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Notifications · Operations</h1>
+  <div class="status"><span class="dot" id="dot"></span><span id="conn">connecting…</span></div>
+  <input id="filter" placeholder="Filter by client_id — e.g. CLIENT001" autocomplete="off" />
+</header>
+
+<main>
+  <section class="tiles" id="tiles"></section>
+
+  <section class="panel">
+    <h2>Live delivery feed</h2>
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Time</th><th>Client</th><th>Event</th><th>Type</th>
+            <th>Origin</th><th>Attempt</th><th>HTTP</th><th>Latency</th><th>State</th><th></th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+      <div class="empty" id="empty">
+        Waiting for deliveries. Run <code>make deliver-all</code>.
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  Fed by the <code>notifications.delivery-result</code> topic. The monitor is one more
+  consumer of the event stream — the delivery path does not know it exists.
+</footer>
+
+<script>
+(function () {
+  'use strict';
+
+  var rows = document.getElementById('rows');
+  var tiles = document.getElementById('tiles');
+  var empty = document.getElementById('empty');
+  var filterInput = document.getElementById('filter');
+  var dot = document.getElementById('dot');
+  var conn = document.getElementById('conn');
+
+  var MAX_ROWS = 200;
+  var filter = '';
+
+  function esc(value) {
+    return String(value == null ? '' : value).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  function time(iso) {
+    var d = new Date(iso);
+    return isNaN(d) ? '—' : d.toTimeString().slice(0, 8);
+  }
+
+  function tile(label, value, sub) {
+    return '<div class="tile"><div class="label">' + esc(label) + '</div>' +
+           '<div class="value">' + esc(value) + '</div>' +
+           '<div class="sub">' + esc(sub || '') + '</div></div>';
+  }
+
+  function renderSummary(s) {
+    var rate = s.total === 0 ? '—' : (s.successRate * 100).toFixed(1) + '%';
+    var states = Object.keys(s.byState).map(function (k) {
+      return k.toLowerCase() + ' ' + s.byState[k];
+    }).join(' · ');
+
+    tiles.innerHTML =
+      tile('Deliveries', s.total, states || 'no activity yet') +
+      tile('Success rate', rate, s.failed + ' failed') +
+      tile('Latency p95', s.latency.p95 + ' ms', 'p50 ' + s.latency.p50 + ' · max ' + s.latency.max) +
+      tile('Clients', s.clients, (s.bySource.SELF_SERVICE || 0) + ' manual replays') +
+      tile('Automatic retries', s.bySource.RETRY_SERVICE || 0, 'origin RETRY_SERVICE');
+  }
+
+  function rowHtml(r, isNew) {
+    var canReplay = r.state === 'FAILED';
+    return '<tr class="' + (isNew ? 'new' : '') + '">' +
+      '<td class="muted">' + esc(time(r.occurredAt)) + '</td>' +
+      '<td><code>' + esc(r.clientId) + '</code></td>' +
+      '<td><code>' + esc(r.eventId) + '</code></td>' +
+      '<td>' + esc(r.eventType) + '</td>' +
+      '<td><span class="pill ' + esc(r.dispatchSource) + '">' + esc(r.dispatchSource) + '</span></td>' +
+      '<td>' + esc(r.attemptNumber) + '</td>' +
+      '<td>' + (r.responseStatus == null ? '<span class="muted">—</span>' : esc(r.responseStatus)) + '</td>' +
+      '<td class="muted">' + esc(r.durationMs) + ' ms</td>' +
+      '<td><span class="pill ' + esc(r.state) + '">' + esc(r.state) + '</span></td>' +
+      '<td>' + (canReplay
+        ? '<button class="replay" data-id="' + esc(r.notificationEventId) +
+          '" data-client="' + esc(r.clientId) + '">Replay</button>'
+        : '') + '</td>' +
+    '</tr>';
+  }
+
+  function matchesFilter(r) {
+    return !filter || (r.clientId || '').toLowerCase().indexOf(filter) !== -1;
+  }
+
+  function prepend(r) {
+    if (!matchesFilter(r)) return;
+    empty.style.display = 'none';
+    rows.insertAdjacentHTML('afterbegin', rowHtml(r, true));
+    while (rows.children.length > MAX_ROWS) rows.removeChild(rows.lastChild);
+  }
+
+  function loadSnapshot() {
+    var q = filter ? '?client_id=' + encodeURIComponent(filterInput.value.trim()) : '';
+
+    fetch('/api/summary' + q).then(function (r) { return r.json(); }).then(renderSummary);
+
+    fetch('/api/deliveries' + q).then(function (r) { return r.json(); }).then(function (d) {
+      rows.innerHTML = d.deliveries.map(function (r) { return rowHtml(r, false); }).join('');
+      empty.style.display = d.deliveries.length ? 'none' : 'block';
+    });
+  }
+
+  // Replay goes through the self-service API, so an operator's action is
+  // authorised and audited exactly like a client's own request.
+  rows.addEventListener('click', function (e) {
+    var button = e.target.closest('button.replay');
+    if (!button) return;
+
+    button.disabled = true;
+    button.textContent = 'Replaying…';
+
+    fetch('/api/replay', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        notification_event_id: button.dataset.id,
+        client_id: button.dataset.client
+      })
+    })
+      .then(function (r) { return r.json().then(function (b) { return { ok: r.ok, body: b }; }); })
+      .then(function (res) {
+        button.textContent = res.ok ? 'Queued' : (res.body && res.body.error) || 'Failed';
+      })
+      .catch(function () { button.textContent = 'Failed'; });
+  });
+
+  var debounce;
+  filterInput.addEventListener('input', function () {
+    clearTimeout(debounce);
+    debounce = setTimeout(function () {
+      filter = filterInput.value.trim().toLowerCase();
+      loadSnapshot();
+    }, 250);
+  });
+
+  // EventSource reconnects on its own — one of the reasons this is SSE and
+  // not a WebSocket with a hand-rolled retry loop.
+  var stream = new EventSource('/stream');
+
+  stream.onopen = function () {
+    dot.classList.add('live');
+    conn.textContent = 'live';
+  };
+  stream.onerror = function () {
+    dot.classList.remove('live');
+    conn.textContent = 'reconnecting…';
+  };
+  stream.addEventListener('delivery', function (e) {
+    var result = JSON.parse(e.data);
+    prepend(result);
+    fetch('/api/summary' + (filter ? '?client_id=' + encodeURIComponent(filterInput.value.trim()) : ''))
+      .then(function (r) { return r.json(); })
+      .then(renderSummary);
+  });
+
+  loadSnapshot();
+})();
+</script>
+</body>
+</html>

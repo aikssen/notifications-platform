@@ -40,6 +40,7 @@ type fakeStore struct {
 	failed     map[string]string
 	reclaimed  int
 	reclaimCut time.Time
+	backlogAge time.Duration
 }
 
 func newFakeStore(due ...domain.PendingRetry) *fakeStore {
@@ -75,6 +76,10 @@ func (s *fakeStore) MarkFailed(_ context.Context, id, reason string, _ time.Time
 	}
 	s.failed[id] = reason
 	return nil
+}
+
+func (s *fakeStore) OldestRetryingAge(_ context.Context) (time.Duration, error) {
+	return s.backlogAge, nil
 }
 
 func (s *fakeStore) ReclaimStalled(_ context.Context, cutoff time.Time) (int, error) {
@@ -273,6 +278,28 @@ func TestClaimFailurePropagates(t *testing.T) {
 	}
 }
 
+// The backlog gauge is what tells an on-call engineer that deliveries are
+// failing faster than they are being retried — a success-rate percentage alone
+// stays flat while the queue grows.
+func TestReportsTheBacklogAge(t *testing.T) {
+	h := newHarness(t)
+	h.store.backlogAge = 7 * time.Minute
+
+	var reported time.Duration
+	h.uc = usecase.NewProcessDueRetries(
+		h.store, h.events, h.dlq, fakeClock{}, fixedRandom{0.5},
+		usecase.Options{Policy: mustPolicy(t), Visibility: time.Minute, BatchSize: 50},
+		quiet, &recordingObserver{onBacklog: func(d time.Duration) { reported = d }},
+	)
+
+	if err := h.uc.ReportBacklog(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if reported != 7*time.Minute {
+		t.Fatalf("reported %v, want 7m", reported)
+	}
+}
+
 // Without this sweep, a dispatcher crashing mid-delivery strands the event
 // forever: nothing looks at DELIVERING again.
 func TestReclaimsDeliveriesAbandonedMidFlight(t *testing.T) {
@@ -288,3 +315,22 @@ func TestReclaimsDeliveriesAbandonedMidFlight(t *testing.T) {
 		t.Fatalf("cutoff = %v, want %v", h.store.reclaimCut, want)
 	}
 }
+
+func mustPolicy(t *testing.T) domain.RetryPolicy {
+	t.Helper()
+	p, err := domain.NewRetryPolicy(5, 10*time.Second, 15*time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+type recordingObserver struct {
+	onBacklog func(time.Duration)
+}
+
+func (o *recordingObserver) Requeued(string)                  {}
+func (o *recordingObserver) Exhausted(string)                 {}
+func (o *recordingObserver) Reclaimed(int)                    {}
+func (o *recordingObserver) CycleFinished(int, time.Duration) {}
+func (o *recordingObserver) BacklogAge(d time.Duration)       { o.onBacklog(d) }

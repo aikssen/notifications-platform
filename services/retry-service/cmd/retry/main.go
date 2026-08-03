@@ -145,6 +145,10 @@ func poll(
 			log.Error("retry cycle failed", slog.Any("error", err))
 		}
 
+		if err := process.ReportBacklog(ctx); err != nil && ctx.Err() == nil {
+			log.Warn("could not measure the retry backlog", slog.Any("error", err))
+		}
+
 		if time.Since(lastReclaim) >= reclaimEvery {
 			lastReclaim = time.Now()
 			if err := process.ReclaimStalled(ctx, stalledAfter); err != nil && ctx.Err() == nil {

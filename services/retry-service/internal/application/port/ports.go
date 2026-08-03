@@ -31,6 +31,12 @@ type RetryStore interface {
 	// is the state a client can replay from.
 	MarkFailed(ctx context.Context, notificationEventID, reason string, now time.Time) error
 
+	// OldestRetryingAge reports how long the oldest undelivered event has been
+	// waiting. It is the single most useful number for an on-call engineer: a
+	// rising value means deliveries are failing faster than they are retried,
+	// which a success-rate percentage alone will not show.
+	OldestRetryingAge(ctx context.Context) (time.Duration, error)
+
 	// ReclaimStalled rescues events left in DELIVERING by a dispatcher that
 	// died mid-delivery. Without it those events are stranded forever: the
 	// dispatcher will not touch a DELIVERING event, and the retry poller only

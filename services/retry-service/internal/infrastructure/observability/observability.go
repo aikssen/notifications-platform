@@ -106,6 +106,10 @@ func (o *Observer) Reclaimed(n int) {
 	o.m.Reclaimed.Add(float64(n))
 }
 
+func (o *Observer) BacklogAge(d time.Duration) {
+	o.m.Backlog.Set(d.Seconds())
+}
+
 func (o *Observer) CycleFinished(claimed int, d time.Duration) {
 	o.m.Claimed.Add(float64(claimed))
 	o.m.CycleTime.Observe(d.Seconds())
