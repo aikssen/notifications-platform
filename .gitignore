@@ -24,6 +24,11 @@ coverage.out
 npm-debug.log*
 pnpm-debug.log*
 
+# Postman desktop writes workspace linkage here when the app is pointed at this
+# directory. The collection itself is versioned at docs/api/.
+/.postman/
+/postman/
+
 # editors / os
 .DS_Store
 .idea/

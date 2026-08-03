@@ -1,9 +1,0 @@
-# Use this workspace to collaborate
-workspace:
-  id: e8686e09-71f9-48cd-a5a2-e24b262b2aad
-
-localResources:
-  collections:
-    - ../docs/api/notifications.postman_collection.json
-  specs:
-    - ../docs/api/openapi.yaml
