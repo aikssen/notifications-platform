@@ -1,0 +1,55 @@
+version: "2"
+
+run:
+  timeout: 3m
+
+linters:
+  enable:
+    - depguard
+    - errorlint
+    - bodyclose
+    - gosec
+    - misspell
+
+  settings:
+    depguard:
+      # ---------------------------------------------------------------
+      # THE DEPENDENCY RULE, as a build failure.
+      #
+      #   domain         imports nothing but the standard library
+      #   application    imports only domain
+      #   infrastructure imports whatever it needs
+      #
+      # Test files are excluded so fakes and helpers stay pragmatic; the
+      # rule still holds for every line of production code.
+      # ---------------------------------------------------------------
+      rules:
+        domain:
+          list-mode: strict
+          files:
+            - "**/internal/domain/**"
+            - "!$test"
+          allow:
+            - $gostd
+            - github.com/aikssen/notifications-platform/services/dispatch-service/internal/domain
+
+        application:
+          list-mode: strict
+          files:
+            - "**/internal/application/**"
+            - "!$test"
+          allow:
+            - $gostd
+            - github.com/aikssen/notifications-platform/services/dispatch-service/internal/domain
+            - github.com/aikssen/notifications-platform/services/dispatch-service/internal/application
+
+    gosec:
+      excludes:
+        - G404 # math/rand is used for retry jitter, not for anything security-sensitive
+
+  exclusions:
+    rules:
+      - path: _test\.go
+        linters:
+          - gosec
+          - errcheck

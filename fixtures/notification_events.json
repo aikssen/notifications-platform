@@ -1,0 +1,84 @@
+{
+  "events": [
+    {
+      "event_id": "EVT001",
+      "event_type": "credit_card_payment",
+      "content": "Credit card payment received for $150.00",
+      "delivery_date": "2024-03-15T09:30:22Z",
+      "delivery_status": "completed",
+      "client_id": "CLIENT001"
+    },
+    {
+      "event_id": "EVT002",
+      "event_type": "debit_card_withdrawal",
+      "content": "ATM withdrawal of $200.00",
+      "delivery_date": "2024-03-15T10:15:45Z",
+      "delivery_status": "completed",
+      "client_id": "CLIENT001"
+    },
+    {
+      "event_id": "EVT003",
+      "event_type": "credit_transfer",
+      "content": "Bank transfer received from Account #4567 for $1,500.00",
+      "delivery_date": "2024-03-15T11:20:18Z",
+      "delivery_status": "failed",
+      "client_id": "CLIENT002"
+    },
+    {
+      "event_id": "EVT004",
+      "event_type": "debit_automatic_payment",
+      "content": "Monthly utility bill payment of $85.50",
+      "delivery_date": "2024-03-15T12:05:33Z",
+      "delivery_status": "completed",
+      "client_id": "CLIENT002"
+    },
+    {
+      "event_id": "EVT005",
+      "event_type": "credit_refund",
+      "content": "Refund processed for order #789 for $45.99",
+      "delivery_date": "2024-03-15T13:45:10Z",
+      "delivery_status": "failed",
+      "client_id": "CLIENT003"
+    },
+    {
+      "event_id": "EVT006",
+      "event_type": "debit_transfer",
+      "content": "Money transfer sent to Account #8901 for $500.00",
+      "delivery_date": "2024-03-15T14:30:55Z",
+      "delivery_status": "completed",
+      "client_id": "CLIENT003"
+    },
+    {
+      "event_id": "EVT007",
+      "event_type": "credit_deposit",
+      "content": "Direct deposit received from Employer XYZ for $2,500.00",
+      "delivery_date": "2024-03-15T15:20:40Z",
+      "delivery_status": "completed",
+      "client_id": "CLIENT001"
+    },
+    {
+      "event_id": "EVT008",
+      "event_type": "debit_purchase",
+      "content": "Point of sale purchase at Store ABC for $75.25",
+      "delivery_date": "2024-03-15T16:10:15Z",
+      "delivery_status": "completed",
+      "client_id": "CLIENT002"
+    },
+    {
+      "event_id": "EVT009",
+      "event_type": "credit_cashback",
+      "content": "Cashback reward credited for $25.00",
+      "delivery_date": "2024-03-15T17:25:30Z",
+      "delivery_status": "failed",
+      "client_id": "CLIENT003"
+    },
+    {
+      "event_id": "EVT010",
+      "event_type": "debit_subscription",
+      "content": "Monthly streaming service payment of $14.99",
+      "delivery_date": "2024-03-15T18:05:12Z",
+      "delivery_status": "completed",
+      "client_id": "CLIENT001"
+    }
+  ]
+}

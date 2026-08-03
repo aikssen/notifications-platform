@@ -1,0 +1,4 @@
+# Matches every directory under services/ that has a package.json.
+# The Go services (dispatch-service, retry-service) are simply skipped.
+packages:
+  - 'services/*'

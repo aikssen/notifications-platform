@@ -1,0 +1,26 @@
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+# Targets that are not up yet simply show as down — Prometheus tolerates it,
+# so this file already lists every service the platform will expose.
+scrape_configs:
+  - job_name: dispatch-service
+    static_configs:
+      - targets: ['dispatch-service:9101']
+
+  - job_name: retry-service
+    static_configs:
+      - targets: ['retry-service:9102']
+
+  - job_name: self-service-api
+    static_configs:
+      - targets: ['self-service-api:3002']
+
+  - job_name: subscription-service
+    static_configs:
+      - targets: ['subscription-service:3001']
+
+  - job_name: monitor-service
+    static_configs:
+      - targets: ['monitor-service:3003']

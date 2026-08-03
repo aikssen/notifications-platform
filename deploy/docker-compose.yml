@@ -1,0 +1,116 @@
+name: notifications-platform
+
+# ---------------------------------------------------------------------------
+# Infrastructure for the notifications platform.
+#
+# Kafka runs in KRaft mode (no ZooKeeper): fewer moving parts and a much
+# faster, more reliable cold start — which matters when the whole thing is
+# brought up live during a presentation.
+#
+# Application services are added to this file as each one is implemented.
+# ---------------------------------------------------------------------------
+
+services:
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: notif-platform-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-notifications}
+      POSTGRES_USER: ${POSTGRES_USER:-notifications}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-notifications}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-notifications} -d ${POSTGRES_DB:-notifications}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  kafka:
+    image: confluentinc/cp-kafka:7.7.1
+    container_name: notif-platform-kafka
+    ports:
+      - "${KAFKA_PORT:-9092}:9092"
+    environment:
+      # --- KRaft: this node is both broker and controller -----------------
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:29093
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+
+      # --- listeners: INTERNAL for containers, EXTERNAL for the host ------
+      KAFKA_LISTENERS: INTERNAL://0.0.0.0:29092,EXTERNAL://0.0.0.0:9092,CONTROLLER://0.0.0.0:29093
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:29092,EXTERNAL://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+
+      # --- single-node development settings -------------------------------
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-broker-api-versions --bootstrap-server localhost:9092 >/dev/null 2>&1"]
+      interval: 5s
+      timeout: 10s
+      retries: 20
+      start_period: 20s
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+
+  # Creates topics explicitly. Auto-creation is disabled on purpose: partition
+  # count is an architectural decision (ordering per client), not a default.
+  kafka-init:
+    image: confluentinc/cp-kafka:7.7.1
+    container_name: notif-platform-kafka-init
+    depends_on:
+      kafka:
+        condition: service_healthy
+    volumes:
+      - ./kafka/create-topics.sh:/create-topics.sh:ro
+    entrypoint: ["/bin/bash", "/create-topics.sh"]
+    environment:
+      KAFKA_BOOTSTRAP: kafka:29092
+      TOPIC_DISPATCH: ${KAFKA_TOPIC_DISPATCH:-notifications.dispatch}
+      TOPIC_RESULT: ${KAFKA_TOPIC_RESULT:-notifications.delivery-result}
+      TOPIC_DLQ: ${KAFKA_TOPIC_DLQ:-notifications.dlq}
+      DISPATCH_PARTITIONS: ${KAFKA_DISPATCH_PARTITIONS:-3}
+
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    container_name: notif-platform-prometheus
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=6h
+
+  grafana:
+    image: grafana/grafana:11.3.1
+    container_name: notif-platform-grafana
+    depends_on:
+      - prometheus
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_USERS_DEFAULT_THEME: light
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+
+volumes:
+  postgres_data:
+  kafka_data:
