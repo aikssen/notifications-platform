@@ -120,6 +120,7 @@ services:
       context: ..
       dockerfile: services/subscription-service/Dockerfile
     container_name: notif-platform-subscriptions
+    restart: unless-stopped
     depends_on:
       postgres:
         condition: service_healthy
@@ -150,11 +151,12 @@ services:
     build:
       context: ../services/dispatch-service
     container_name: notif-platform-dispatch
+    restart: unless-stopped
     depends_on:
       postgres:
         condition: service_healthy
-      kafka:
-        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
       subscription-service:
         condition: service_healthy
     ports:
@@ -180,11 +182,12 @@ services:
     build:
       context: ../services/retry-service
     container_name: notif-platform-retry
+    restart: unless-stopped
     depends_on:
       postgres:
         condition: service_healthy
-      kafka:
-        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
     ports:
       - "${RETRY_METRICS_PORT:-9102}:9102"
     environment:
@@ -205,11 +208,12 @@ services:
       context: ..
       dockerfile: services/self-service-api/Dockerfile
     container_name: notif-platform-self-service
+    restart: unless-stopped
     depends_on:
       postgres:
         condition: service_healthy
-      kafka:
-        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
     ports:
       - "${SELF_SERVICE_PORT:-3002}:3002"
     volumes:
@@ -237,9 +241,10 @@ services:
       context: ..
       dockerfile: services/monitor-service/Dockerfile
     container_name: notif-platform-monitor
+    restart: unless-stopped
     depends_on:
-      kafka:
-        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
     ports:
       - "${MONITOR_SERVICE_PORT:-3003}:3003"
     environment:
@@ -254,6 +259,7 @@ services:
       context: ..
       dockerfile: services/demo-tools/Dockerfile
     container_name: notif-platform-demo-tools
+    restart: unless-stopped
     ports:
       - "${DEMO_TOOLS_PORT:-3004}:3004"
     environment:

@@ -1,0 +1,397 @@
+{
+  "info": {
+    "name": "Cobre Notifications",
+    "description": "Client-facing APIs for the notifications platform.\n\nThe collection fetches and caches a bearer token automatically — set the `client_id` variable and every request is authenticated as that client. Switch it to `CLIENT002` and the same requests demonstrate tenant isolation: the events you could read a moment ago now answer 404.\n\nImport `openapi.yaml` alongside this if you want the full schema reference.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "self_service", "value": "http://localhost:3002" },
+    { "key": "subscriptions", "value": "http://localhost:3001" },
+    { "key": "client_id", "value": "CLIENT001" },
+    { "key": "token", "value": "" },
+    { "key": "token_client", "value": "" },
+    { "key": "notification_event_id", "value": "" },
+    { "key": "subscription_id", "value": "" }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Fetch a token on demand, and re-fetch whenever client_id changes.",
+          "// The demo token endpoint is only mounted when ENABLE_DEMO_TOKENS=true.",
+          "const clientId = pm.collectionVariables.get('client_id');",
+          "const cachedFor = pm.collectionVariables.get('token_client');",
+          "",
+          "if (pm.collectionVariables.get('token') && cachedFor === clientId) {",
+          "  return;",
+          "}",
+          "",
+          "pm.sendRequest({",
+          "  url: pm.collectionVariables.get('self_service') + '/auth/token',",
+          "  method: 'POST',",
+          "  header: { 'content-type': 'application/json' },",
+          "  body: { mode: 'raw', raw: JSON.stringify({ client_id: clientId }) }",
+          "}, (err, res) => {",
+          "  if (err || res.code !== 200) {",
+          "    console.error('could not obtain a token', err || res.code);",
+          "    return;",
+          "  }",
+          "  pm.collectionVariables.set('token', res.json().access_token);",
+          "  pm.collectionVariables.set('token_client', clientId);",
+          "});"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "Notification events",
+      "item": [
+        {
+          "name": "List — all",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{self_service}}/notification_events",
+              "host": ["{{self_service}}"],
+              "path": ["notification_events"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "",
+                  "const events = pm.response.json().notification_events;",
+                  "pm.test('every event belongs to the authenticated client', () => {",
+                  "  const clientId = pm.collectionVariables.get('client_id');",
+                  "  events.forEach(e => pm.expect(e.client_id).to.eql(clientId));",
+                  "});",
+                  "",
+                  "if (events.length) {",
+                  "  pm.collectionVariables.set('notification_event_id', events[0].notification_event_id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List — filter by delivery_status",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{self_service}}/notification_events?delivery_status=FAILED",
+              "host": ["{{self_service}}"],
+              "path": ["notification_events"],
+              "query": [{ "key": "delivery_status", "value": "FAILED" }]
+            },
+            "description": "One of the two filters the case statement requires. FAILED events are the ones the replay endpoint acts on."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const events = pm.response.json().notification_events;",
+                  "pm.test('only FAILED events come back', () =>",
+                  "  events.forEach(e => pm.expect(e.delivery_status).to.eql('FAILED')));",
+                  "if (events.length) {",
+                  "  pm.collectionVariables.set('notification_event_id', events[0].notification_event_id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List — filter by creation date",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{self_service}}/notification_events?created_from=2024-01-01T00:00:00Z&page_size=10",
+              "host": ["{{self_service}}"],
+              "path": ["notification_events"],
+              "query": [
+                { "key": "created_from", "value": "2024-01-01T00:00:00Z" },
+                { "key": "created_to", "value": "2030-01-01T00:00:00Z", "disabled": true },
+                { "key": "page_size", "value": "10" }
+              ]
+            },
+            "description": "The other required filter, with pagination. page_size is capped at 100 so one request cannot pull the whole table."
+          }
+        },
+        {
+          "name": "Detail — with delivery history",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{self_service}}/notification_events/{{notification_event_id}}",
+              "host": ["{{self_service}}"],
+              "path": ["notification_events", "{{notification_event_id}}"]
+            },
+            "description": "Every attempt made for this event, with the request as sent and the response as received.\n\nRun this against an event that failed and was later replayed: the attempts show SYSTEM, then RETRY_SERVICE, then SELF_SERVICE — three origins, one pipeline."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('the original payload is preserved', () =>",
+                  "  pm.expect(body.event_payload).to.not.be.undefined);",
+                  "pm.test('attempts carry the request as sent', () => {",
+                  "  if (!body.attempts.length) return;",
+                  "  const a = body.attempts[0];",
+                  "  pm.expect(a.webhook_url).to.be.a('string');",
+                  "  pm.expect(a.request_method).to.be.a('string');",
+                  "  pm.expect(a.request_payload).to.not.be.undefined;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Replay — a definitively failed delivery",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{self_service}}/notification_events/{{notification_event_id}}/replay",
+              "host": ["{{self_service}}"],
+              "path": ["notification_events", "{{notification_event_id}}", "replay"]
+            },
+            "description": "Only an event in FAILED can be replayed — 409 for anything else.\n\nNo request body: the client identity comes from the token. The replay publishes the original payload onto the same topic a first delivery uses, tagged SELF_SERVICE, so it returns 202 and the outcome appears as a new attempt."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('202 for a FAILED event, 409 otherwise', () =>",
+                  "  pm.expect([202, 409]).to.include(pm.response.code));",
+                  "",
+                  "if (pm.response.code === 202) {",
+                  "  pm.test('the event is handed back to the pipeline', () =>",
+                  "    pm.expect(pm.response.json().state).to.eql('RETRYING'));",
+                  "} else {",
+                  "  console.log('refused:', pm.response.json().message);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Subscriptions",
+      "item": [
+        {
+          "name": "Create",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "content-type", "value": "application/json" }],
+            "url": {
+              "raw": "{{subscriptions}}/subscriptions",
+              "host": ["{{subscriptions}}"],
+              "path": ["subscriptions"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"webhook_url\": \"https://client.example.com/hooks/payments\",\n  \"method\": \"POST\",\n  \"expected_status\": 200,\n  \"events\": [\"credit_card_payment\"]\n}"
+            },
+            "description": "No client_id in the body — it comes from the token. Adding one is rejected: the schema is strict.\n\nsigning_secret is returned exactly once."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 created, or 409 if it already exists', () =>",
+                  "  pm.expect([201, 409]).to.include(pm.response.code));",
+                  "",
+                  "if (pm.response.code === 201) {",
+                  "  const sub = pm.response.json().subscriptions[0];",
+                  "  pm.collectionVariables.set('subscription_id', sub.subscription_id);",
+                  "  pm.test('a signing secret is issued', () =>",
+                  "    pm.expect(sub.signing_secret).to.be.a('string'));",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create — refused by the SSRF guard",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "content-type", "value": "application/json" }],
+            "url": {
+              "raw": "{{subscriptions}}/subscriptions",
+              "host": ["{{subscriptions}}"],
+              "path": ["subscriptions"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"webhook_url\": \"https://169.254.169.254/latest/meta-data/iam/\",\n  \"events\": [\"ssrf_probe\"]\n}"
+            },
+            "description": "OWASP A10. The cloud instance metadata endpoint — a webhook pointed here would have the platform fetch credentials from inside the VPC on the caller's behalf.\n\nAlso try: https://127.0.0.1/hook, https://10.0.0.1/hook, https://client.example.com:5432/hook, and a plain http:// URL.\n\nNote: the local demo relaxes address-range blocking (WEBHOOK_ALLOW_PRIVATE_NETWORKS), so only the port rules bite by default. Set it to false to see the full guard."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 400) {",
+                  "  pm.test('refused, with a reason', () =>",
+                  "    pm.expect(pm.response.json().code).to.be.a('string'));",
+                  "  console.log('refused:', pm.response.json().message);",
+                  "} else {",
+                  "  console.log('accepted — the guard is relaxed for the local demo');",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{subscriptions}}/subscriptions",
+              "host": ["{{subscriptions}}"],
+              "path": ["subscriptions"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('signing secrets are never returned again', () =>",
+                  "  pm.response.json().subscriptions.forEach(s => {",
+                  "    pm.expect(s.signing_secret).to.be.undefined;",
+                  "    pm.expect(s.hmac_secret).to.be.undefined;",
+                  "  }));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Deactivate",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{subscriptions}}/subscriptions/{{subscription_id}}",
+              "host": ["{{subscriptions}}"],
+              "path": ["subscriptions", "{{subscription_id}}"]
+            },
+            "description": "Deactivated, not deleted — a delivery that failed last week must stay explainable next month."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Access control",
+      "description": "Set client_id to CLIENT002, run these, and watch resources that were readable a moment ago answer 404.",
+      "item": [
+        {
+          "name": "No token",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": {
+              "raw": "{{self_service}}/notification_events",
+              "host": ["{{self_service}}"],
+              "path": ["notification_events"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401', () => pm.response.to.have.status(401));",
+                  "pm.test('does not say why', () =>",
+                  "  pm.expect(pm.response.json().message).to.eql('Invalid or expired token').or.to.include('required'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Forged token",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "eyJhbGciOiJub25lIn0.eyJzdWIiOiJDTElFTlQwMDEifQ.", "type": "string" }]
+            },
+            "method": "GET",
+            "url": {
+              "raw": "{{self_service}}/notification_events",
+              "host": ["{{self_service}}"],
+              "path": ["notification_events"]
+            },
+            "description": "An `alg: none` token. Refused because the verification algorithm is pinned to HS256 rather than read from the token's own header."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('401', () => pm.response.to.have.status(401));"]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Another client's event",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{self_service}}/notification_events/{{notification_event_id}}",
+              "host": ["{{self_service}}"],
+              "path": ["notification_events", "{{notification_event_id}}"]
+            },
+            "description": "Capture notification_event_id as CLIENT001, then switch the client_id variable to CLIENT002 and run this.\n\n404, not 403 — a 403 would confirm the id exists, turning the endpoint into an enumeration oracle."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('404 for another client, never 403', () =>",
+                  "  pm.expect(pm.response.code).to.be.oneOf([200, 404]));",
+                  "pm.test('never 403', () => pm.expect(pm.response.code).to.not.eql(403));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
